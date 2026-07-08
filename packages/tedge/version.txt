@@ -1,0 +1,13 @@
+thin-edge.io standalone release pinned for this Router App.
+
+  version: 2.0.1-3
+  source:  https://github.com/thin-edge/tedge-standalone/releases/tag/2.0.1-3
+
+Architectures used per ICR platform:
+  v2i  -> tedge-standalone-armel.tar.gz
+  v3   -> tedge-standalone-armhf.tar.gz
+  v4   -> tedge-standalone-arm64.tar.gz
+  v4i  -> tedge-standalone-arm64.tar.gz   (ICR-1642)
+
+To upgrade thin-edge.io, bump TEDGE_VERSION in packages/tedge/Makefile,
+update this file and modules/tedge/CHANGELOG.txt, then rebuild.

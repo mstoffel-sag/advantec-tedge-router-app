@@ -1,0 +1,213 @@
+#!/bin/sh
+# ICR-OS service control script for the thin-edge.io Router App.
+#
+# ICR-OS calls this script with start|stop|restart|status|defaults to control the
+# module. It provisions thin-edge.io from the module settings and supervises the
+# three thin-edge.io daemons directly (no dependency on runit or the host init
+# system), so it works on any ICR platform.
+
+MOD_NAME=tedge
+MOD_DIR=/opt/$MOD_NAME
+BIN=$MOD_DIR/bin
+MOD_DEFAULTS=$MOD_DIR/etc/defaults
+MOD_SETTINGS=$MOD_DIR/etc/settings
+[ -L "$MOD_SETTINGS" ] && MOD_SETTINGS=$(readlink "$MOD_SETTINGS")
+
+# thin-edge.io environment (PATH, TEDGE_CONFIG_DIR, SSL_CERT_FILE, ...).
+[ -f "$MOD_DIR/env" ] && . "$MOD_DIR/env"
+
+# Module settings (MOD_TEDGE_*). Created from defaults on first install.
+[ -f "$MOD_SETTINGS" ] || cp "$MOD_DEFAULTS" "$MOD_SETTINGS"
+. "$MOD_SETTINGS"
+
+# Volatile locations for pid files and logs.
+if   [ -d /var/run ]; then PIDDIR=/var/run
+elif [ -d /run ];     then PIDDIR=/run
+else                       PIDDIR=/tmp
+fi
+LOGDIR=$(tedge config get logs.path 2>/dev/null || echo /var/log/tedge)
+[ -n "$LOGDIR" ] || LOGDIR=/var/log/tedge
+mkdir -p "$LOGDIR" /tmp/tedge 2>/dev/null || true
+
+log() { /usr/bin/logger -t "$MOD_NAME" "$1" 2>/dev/null; echo "$1"; }
+
+# ---------------------------------------------------------------------------
+# Daemon supervision helpers
+# ---------------------------------------------------------------------------
+pidfile() { echo "$PIDDIR/$MOD_NAME-$1.pid"; }
+
+is_running() {
+    pf=$(pidfile "$1")
+    [ -f "$pf" ] || return 1
+    kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null
+}
+
+# start_daemon <label> <command...>
+start_daemon() {
+    label=$1; shift
+    if is_running "$label"; then
+        echo "  $label already running"
+        return 0
+    fi
+    "$@" >> "$LOGDIR/$label.log" 2>&1 &
+    echo $! > "$(pidfile "$label")"
+    echo "  started $label (pid $!)"
+}
+
+# stop_daemon <label> <pkill-pattern>
+stop_daemon() {
+    label=$1; pattern=$2
+    pf=$(pidfile "$label")
+    if [ -f "$pf" ]; then
+        kill "$(cat "$pf" 2>/dev/null)" 2>/dev/null
+        rm -f "$pf"
+    fi
+    # Fallback in case the pid file was lost.
+    pkill -f "$pattern" 2>/dev/null || true
+    echo "  stopped $label"
+}
+
+# ---------------------------------------------------------------------------
+# Provisioning (idempotent, runs on every start; network steps only when needed)
+# ---------------------------------------------------------------------------
+normalize_url() { echo "$1" | sed -E 's|^https?://||g'; }
+
+resolve_device_id() {
+    if [ -n "$MOD_TEDGE_DEVICE_ID" ]; then
+        echo "$MOD_TEDGE_DEVICE_ID"
+    elif [ -x "$BIN/tedge-identity" ]; then
+        "$BIN/tedge-identity" 2>/dev/null || hostname
+    else
+        hostname
+    fi
+}
+
+configure() {
+    # Cumulocity URL
+    if [ -n "$MOD_TEDGE_C8Y_URL" ]; then
+        url=$(normalize_url "$MOD_TEDGE_C8Y_URL")
+        [ "$(tedge config get c8y.url 2>/dev/null)" = "$url" ] || tedge config set c8y.url "$url"
+    fi
+
+    case "$MOD_TEDGE_CA" in
+        basic)
+            if [ -n "$MOD_TEDGE_DEVICE_USER" ] && [ -n "$MOD_TEDGE_DEVICE_PASSWORD" ]; then
+                cred_path=$(tedge config get c8y.credentials_path 2>/dev/null || echo "$MOD_DIR/credentials.toml")
+                cat > "$cred_path" <<EOT
+[c8y]
+username = "$MOD_TEDGE_DEVICE_USER"
+password = "$MOD_TEDGE_DEVICE_PASSWORD"
+EOT
+                chmod 600 "$cred_path" 2>/dev/null || true
+                tedge config set c8y.auth_method basic
+                dev_id=$(echo "$MOD_TEDGE_DEVICE_USER" | cut -d/ -f2- | sed 's|^device_||')
+                [ -n "$dev_id" ] && tedge config set device.id "$dev_id"
+            else
+                log "ERROR: MOD_TEDGE_CA=basic but device user/password are not set"
+                return 1
+            fi
+            ;;
+        self-signed)
+            tedge config set c8y.auth_method certificate
+            cert_path=$(tedge config get device.cert_path 2>/dev/null)
+            dev_id=$(resolve_device_id)
+            [ -n "$dev_id" ] && tedge config set device.id "$dev_id"
+            if [ ! -f "$cert_path" ]; then
+                tedge cert create --device-id "$dev_id" || return 1
+                log "Self-signed certificate created. Upload it to Cumulocity with:"
+                log "  tedge cert upload c8y --user <c8y-user>"
+            fi
+            ;;
+        *)  # c8y-ca (Cumulocity Certificate Authority) -- default & recommended
+            tedge config set c8y.auth_method certificate
+            dev_id=$(resolve_device_id)
+            [ -n "$dev_id" ] && tedge config set device.id "$dev_id"
+            cert_path=$(tedge config get device.cert_path 2>/dev/null)
+            if [ ! -f "$cert_path" ]; then
+                otp=$MOD_TEDGE_OTP
+                [ -n "$otp" ] || otp=$(printf "%s" "$dev_id" | md5sum | awk '{print $1}')
+                c8y_host=$(tedge config get c8y.url 2>/dev/null)
+                if [ -n "$c8y_host" ]; then
+                    log "Register this device in Cumulocity:"
+                    log "  https://$c8y_host/apps/devicemanagement/index.html#/deviceregistration?externalId=$dev_id&one-time-password=$otp"
+                fi
+                # Non-fatal: if the device is not registered / no network yet,
+                # this simply retries on the next start.
+                tedge cert download c8y --device-id "$dev_id" \
+                    --one-time-password "$otp" --retry-every 5s --max-timeout 60s \
+                    || log "Certificate not obtained yet (will retry on next start)"
+            fi
+            ;;
+    esac
+
+    # Keep bridge / config in sync (best effort).
+    tedge config upgrade  >/dev/null 2>&1 || true
+    tedge refresh-bridges >/dev/null 2>&1 || true
+}
+
+start_tedge() {
+    log "Starting $MOD_NAME"
+
+    # Create runtime dirs and the tedge multi-call symlinks (tedge-mapper,
+    # tedge-agent, ...). Idempotent.
+    "$BIN/tedge" init --user root --group root >/dev/null 2>&1 || true
+
+    configure || { log "Provisioning failed; not starting daemons"; return 1; }
+
+    # Local MQTT broker, then the c8y mapper (built-in TLS bridge to the cloud)
+    # and the device management agent.
+    start_daemon mosquitto        "$BIN/mosquitto" -c "$MOD_DIR/mosquitto.conf"
+    start_daemon tedge-mapper-c8y "$BIN/tedge-mapper" c8y
+    start_daemon tedge-agent      "$BIN/tedge-agent"
+
+    log "$MOD_NAME started"
+}
+
+stop_tedge() {
+    log "Stopping $MOD_NAME"
+    stop_daemon tedge-agent      "$BIN/tedge-agent"
+    stop_daemon tedge-mapper-c8y "$BIN/tedge-mapper c8y"
+    stop_daemon mosquitto        "$BIN/mosquitto"
+}
+
+status_tedge() {
+    rc=0
+    for s in mosquitto tedge-mapper-c8y tedge-agent; do
+        if is_running "$s"; then
+            echo "  $s: running"
+        else
+            echo "  $s: stopped"
+            rc=1
+        fi
+    done
+    return $rc
+}
+
+case "$1" in
+    start)
+        [ "$MOD_TEDGE_ENABLED" = "1" ] || { echo "$MOD_NAME is disabled (set MOD_TEDGE_ENABLED=1)"; exit 0; }
+        start_tedge
+        ;;
+    stop)
+        stop_tedge
+        ;;
+    restart)
+        stop_tedge
+        sleep 1
+        [ "$MOD_TEDGE_ENABLED" = "1" ] || { echo "$MOD_NAME is disabled (set MOD_TEDGE_ENABLED=1)"; exit 0; }
+        start_tedge
+        ;;
+    status)
+        echo "Module $MOD_NAME:"
+        status_tedge
+        exit $?
+        ;;
+    defaults)
+        cp "$MOD_DEFAULTS" "$MOD_SETTINGS"
+        echo "Settings reset to defaults"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|defaults}"
+        exit 1
+        ;;
+esac

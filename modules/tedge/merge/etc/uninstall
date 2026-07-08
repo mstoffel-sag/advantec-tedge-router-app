@@ -1,0 +1,16 @@
+#!/bin/sh
+# Executed by ICR-OS when the Router App is removed.
+MOD_DIR=/opt/tedge
+
+# Stop thin-edge.io if it is still running.
+[ -x "$MOD_DIR/etc/init" ] && "$MOD_DIR/etc/init" stop 2>/dev/null
+
+# Remove the convenience CLI symlink (only if it points at our binary).
+if [ -h /usr/bin/tedge ]; then
+    LINK_TARGET=$(readlink /usr/bin/tedge 2>/dev/null)
+    case "$LINK_TARGET" in
+        "$MOD_DIR"/*) rm -f /usr/bin/tedge ;;
+    esac
+fi
+
+exit 0

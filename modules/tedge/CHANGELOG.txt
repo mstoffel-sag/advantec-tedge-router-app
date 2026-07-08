@@ -1,0 +1,12 @@
+thin-edge.io Router App - Changelog
+===================================
+
+1.0.0
+-----
+* Initial release.
+* Bundles thin-edge.io standalone 2.0.1-3.
+* Connects the router to Cumulocity IoT (built-in TLS MQTT bridge).
+* Supports Cumulocity Certificate Authority (c8y-ca), basic-auth and
+  self-signed registration modes, configurable from the router web UI.
+* Supervises the mosquitto broker, tedge-mapper-c8y and tedge-agent daemons.
+* Built for ICR platforms v2i / v3 / v4 / v4i (ICR-1642 == v4i).

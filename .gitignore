@@ -1,0 +1,13 @@
+# build output
+/images/
+tmp/
+obj.*/
+
+# fetched thin-edge.io release tarballs and intermediate packages
+*.pkg
+*.tar.gz
+*.tgz
+
+# checked-out build dependencies (kept next to this repo, not inside it)
+/ModulesSDK/
+/Toolchains/

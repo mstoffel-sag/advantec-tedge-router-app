@@ -1,0 +1,37 @@
+#!/bin/sh
+# Executed once by ICR-OS when the Router App is installed.
+# $1 is the root filesystem prefix into which system-wide links are created.
+set -e
+PREFIX="$1"
+MOD_DIR=/opt/tedge
+
+# ---------------------------------------------------------------------------
+# Activate the shipped configuration.
+#
+# The bundle ships *.default files so that re-installing / upgrading the app
+# never overwrites configuration the operator already changed. On first install
+# the defaults are promoted to their active names (matching thin-edge's own
+# install.sh behaviour). The config-dir placeholders were already rewritten to
+# /opt/tedge at build time by packages/tedge.
+# ---------------------------------------------------------------------------
+move_if_missing() {
+    [ -f "$MOD_DIR/$2" ] || { [ -f "$MOD_DIR/$1" ] && mv "$MOD_DIR/$1" "$MOD_DIR/$2"; }
+}
+move_if_missing env.default env
+move_if_missing tedge.default.toml tedge.toml
+move_if_missing system.default.toml system.toml
+
+# Promote the Router App settings (used by etc/init) on first install.
+[ -f "$MOD_DIR/etc/settings" ] || cp "$MOD_DIR/etc/defaults" "$MOD_DIR/etc/settings"
+
+# Runtime directories (log/tmp/data live on volatile storage).
+mkdir -p /var/log/tedge /tmp/tedge 2>/dev/null || true
+
+# Make sure the bundled scripts are executable.
+chmod +x "$MOD_DIR/bin/"* "$MOD_DIR/etc/init" 2>/dev/null || true
+
+# Convenience: expose the tedge CLI on the system PATH.
+[ -d "$PREFIX/usr/bin" ] || mkdir -p "$PREFIX/usr/bin"
+[ -e "$PREFIX/usr/bin/tedge" ] || ln -sf "$MOD_DIR/bin/tedge" "$PREFIX/usr/bin/tedge"
+
+exit 0

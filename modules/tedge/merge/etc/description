@@ -1,0 +1,13 @@
+Runs thin-edge.io on the router to connect it to Cumulocity IoT. thin-edge.io is
+a lightweight, open-source IoT edge framework: it registers the device in the
+cloud, forwards telemetry and events, and enables remote management such as
+configuration, log collection, software updates and remote commands.
+
+The app bundles a self-contained thin-edge.io "standalone" runtime (the tedge
+multi-call binary plus a statically linked Mosquitto MQTT broker) so it has no
+external dependencies. The secure connection to the cloud is handled by
+thin-edge.io's built-in MQTT bridge over TLS.
+
+Configure the Cumulocity URL and device registration details on this module's
+configuration page, enable the module, and thin-edge.io will start automatically
+on boot.

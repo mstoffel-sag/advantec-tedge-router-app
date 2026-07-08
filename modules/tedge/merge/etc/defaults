@@ -1,0 +1,32 @@
+# thin-edge.io Router App configuration.
+#
+# These values are copied to /opt/tedge/etc/settings on first install and can be
+# edited from the router web interface (Customization > Router Apps > thin-edge.io)
+# or directly in the settings file. Run "/opt/tedge/etc/init restart" after a change.
+
+# Start thin-edge.io automatically (1 = enabled, 0 = disabled).
+MOD_TEDGE_ENABLED=0
+
+# Cumulocity IoT tenant URL, WITHOUT the https:// prefix.
+# Example: mytenant.cumulocity.com
+MOD_TEDGE_C8Y_URL=
+
+# Registration / authentication mode:
+#   c8y-ca      Cumulocity Certificate Authority (recommended). The device
+#               downloads a certificate using a one-time password.
+#   basic       Basic auth using a device username + password.
+#   self-signed Create a self-signed certificate (requires interactive upload).
+MOD_TEDGE_CA=c8y-ca
+
+# Device external ID (the identifier shown in Cumulocity). Leave empty to derive
+# it automatically from the router (tedge-identity / hostname).
+MOD_TEDGE_DEVICE_ID=
+
+# One-time password for c8y-ca registration. Leave empty to auto-derive a value
+# from the device ID (the same value is printed to the log for registration).
+MOD_TEDGE_OTP=
+
+# Basic-auth credentials (only used when MOD_TEDGE_CA=basic).
+# The device ID is derived from the username (part after "/", minus "device_").
+MOD_TEDGE_DEVICE_USER=
+MOD_TEDGE_DEVICE_PASSWORD=

@@ -1,0 +1,85 @@
+name: build
+
+# Builds the thin-edge.io Router App for every supported Advantech ICR platform.
+#
+#   v2i  armv5   |  v3  armv7   |  v4  aarch64  |  v4i  aarch64 (ICR-1642)
+#
+# Each matrix job sets up the Advantech build environment (cross toolchains +
+# Router App SDK) exactly like scripts/setup-build-env.sh and produces
+# images/tedge/tedge.<platform>.tgz, uploaded as a build artifact. Pushing a
+# tag (v*) additionally publishes all Router Apps to a GitHub Release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.platform }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [v2i, v3, v4, v4i]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Checked out into a subdirectory so the Advantech SDK can be cloned
+          # alongside it (the build expects ../ModulesSDK).
+          path: advantec-tedge-router-app
+
+      - name: Install host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git make pkg-config build-essential cryptsetup-bin curl ccache
+
+      - name: Fetch and install Advantech cross toolchains
+        run: |
+          git clone --depth 1 https://bitbucket.org/bbsmartworx/Toolchains.git
+          sudo dpkg -i Toolchains/deb/*.deb
+
+      - name: Fetch Router App SDK and build its library for ${{ matrix.platform }}
+        run: |
+          git clone --depth 1 https://bitbucket.org/bbsmartworx/ModulesSDK.git
+          make -C ModulesSDK/library PLATFORM=${{ matrix.platform }}
+
+      - name: Build Router App (${{ matrix.platform }})
+        working-directory: advantec-tedge-router-app
+        run: make PLATFORMS="${{ matrix.platform }}"
+
+      - name: Show build output
+        working-directory: advantec-tedge-router-app
+        run: ls -l images/tedge/
+
+      - name: Upload Router App
+        uses: actions/upload-artifact@v4
+        with:
+          name: tedge-${{ matrix.platform }}
+          path: advantec-tedge-router-app/images/tedge/tedge.${{ matrix.platform }}.tgz
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all Router Apps
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.tgz
+          generate_release_notes: true
