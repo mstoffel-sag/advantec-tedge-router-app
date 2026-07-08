@@ -8,5 +8,7 @@ thin-edge.io Router App - Changelog
 * Connects the router to Cumulocity IoT (built-in TLS MQTT bridge).
 * Supports Cumulocity Certificate Authority (c8y-ca), basic-auth and
   self-signed registration modes, configurable from the router web UI.
+* Web interface (Router Apps page): a Cumulocity connection configuration
+  form, a service status/log overview, and a filtered system-log view.
 * Supervises the mosquitto broker, tedge-mapper-c8y and tedge-agent daemons.
 * Built for ICR platforms v2i / v3 / v4 / v4i (ICR-1642 == v4i).

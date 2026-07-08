@@ -36,19 +36,38 @@ advantec-tedge-router-app/
 ├── modules/
 │   ├── Rules.mk            # platform compatibility matrix
 │   └── tedge/              # the Router App itself
-│       ├── Makefile        # bundles the package + overlays merge/
+│       ├── Makefile        # bundles the package + overlays merge/ + builds source/
 │       ├── CHANGELOG.txt
-│       └── merge/etc/      # on-router /opt/tedge/etc/*
-│           ├── name, version, summary, description   # module metadata
-│           ├── defaults    # configurable settings (shown in the web UI)
-│           ├── init        # service control: start|stop|restart|status
-│           ├── install     # first-install setup
-│           └── uninstall   # cleanup
+│       ├── merge/etc/      # on-router /opt/tedge/etc/*
+│       │   ├── name, version, summary, description   # module metadata
+│       │   ├── defaults    # configurable settings (shown in the web UI)
+│       │   ├── init        # service control: start|stop|restart|status
+│       │   ├── install     # first-install setup
+│       │   └── uninstall   # cleanup
+│       └── source/         # the web interface (compiled CGI)
+│           ├── module_cgi.c    # config form, status page, system-log view
+│           ├── module_cfg.c/.h # read/write the settings file
+│           ├── module.h        # module name / paths
+│           └── Makefile        # -> /opt/tedge/{bin/cgi, www/*.cgi}
 ├── scripts/setup-build-env.sh
 └── docs/PLATFORMS.md       # ICR platform ↔ architecture reference
 ```
 
 On the router the module installs to `/opt/tedge/`.
+
+## Web interface
+
+The module adds a page under **Customization → Router Apps → thin-edge.io** with:
+
+- **Configuration** — a form for the Cumulocity connection settings (URL,
+  registration mode, device ID/OTP, and Basic-auth credentials). Saving writes
+  `/opt/tedge/etc/settings` and runs `etc/init restart` to apply the change.
+- **Status** — the live daemon status and the most recent Cumulocity mapper log.
+- **System Log** — the router's system log, filtered to this module.
+
+The page is a single compiled CGI (`source/module_cgi.c`) built against the
+SDK's `libum`. The router's web server enforces login on it (via the standard
+`www/.htpasswd` link) and `libum` adds the CSRF check.
 
 ## Building
 
