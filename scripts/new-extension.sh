@@ -31,7 +31,9 @@ if [ -e "$MOD" ]; then
 fi
 
 echo "==> Creating modules/$NAME"
-mkdir -p "$MOD/merge/etc" "$MOD/merge/opt/$NAME/bin" "$MOD/merge/opt/$NAME/operations/c8y"
+# merge/ contents map directly onto /opt/<name>/ on the router (the build tars
+# tmp/opt/<name>, into which merge/* is copied). So merge/bin -> /opt/<name>/bin.
+mkdir -p "$MOD/merge/etc" "$MOD/merge/bin" "$MOD/merge/operations/c8y"
 
 # --- Makefile (no INSTALL: an extension bundles no thin-edge.io runtime) ------
 cat > "$MOD/Makefile" <<EOF
@@ -202,7 +204,7 @@ exit 0
 EOF
 
 # --- A starter daemon (Pattern A: MQTT participant) --------------------------
-cat > "$MOD/merge/opt/$NAME/bin/$NAME-agent" <<EOF
+cat > "$MOD/merge/bin/$NAME-agent" <<EOF
 #!/bin/sh
 # $NAME extension daemon — a thin-edge.io MQTT participant (Pattern A).
 #
@@ -222,7 +224,7 @@ done
 EOF
 
 # --- README for the operations dir -------------------------------------------
-cat > "$MOD/merge/opt/$NAME/operations/c8y/.gitkeep" <<EOF
+cat > "$MOD/merge/operations/c8y/.gitkeep" <<EOF
 Cumulocity custom-operation declarations live here (Pattern B). Files placed
 here are symlinked into /opt/tedge/operations/c8y/ by etc/install. See
 docs/EXTENSION-API.md and modules/relay for a worked example.
@@ -239,7 +241,7 @@ $(printf '%*s' $((${#NAME} + 22)) '' | tr ' ' '=')
 EOF
 
 chmod +x "$MOD/merge/etc/init" "$MOD/merge/etc/install" "$MOD/merge/etc/uninstall" \
-         "$MOD/merge/opt/$NAME/bin/$NAME-agent"
+         "$MOD/merge/bin/$NAME-agent"
 
 # --- Register in the platform build matrix -----------------------------------
 RULES="$ROOT/modules/Rules.mk"
@@ -253,7 +255,7 @@ fi
 cat <<EOF
 
 Created modules/$NAME. Next:
-  1. Edit modules/$NAME/merge/opt/$NAME/bin/$NAME-agent (your logic).
-  2. Add Cumulocity operations under merge/opt/$NAME/operations/c8y/ (see modules/relay).
+  1. Edit modules/$NAME/merge/bin/$NAME-agent (your logic).
+  2. Add Cumulocity operations under merge/operations/c8y/ (see modules/relay).
   3. Build:  make PLATFORMS="v4i"   ->  images/$NAME/$NAME.v4i.tgz
 EOF
