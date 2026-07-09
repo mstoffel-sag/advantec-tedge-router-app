@@ -36,19 +36,42 @@ advantec-tedge-router-app/
 ├── modules/
 │   ├── Rules.mk            # platform compatibility matrix
 │   └── tedge/              # the Router App itself
-│       ├── Makefile        # bundles the package + overlays merge/
+│       ├── Makefile        # bundles the package + overlays merge/ + builds source/
 │       ├── CHANGELOG.txt
-│       └── merge/etc/      # on-router /opt/tedge/etc/*
-│           ├── name, version, summary, description   # module metadata
-│           ├── defaults    # configurable settings (shown in the web UI)
-│           ├── init        # service control: start|stop|restart|status
-│           ├── install     # first-install setup
-│           └── uninstall   # cleanup
+│       ├── merge/etc/      # on-router /opt/tedge/etc/*
+│       │   ├── name, version, summary, description   # module metadata
+│       │   ├── defaults    # configurable settings (shown in the web UI)
+│       │   ├── init        # service control: start|stop|restart|status
+│       │   ├── install     # first-install setup
+│       │   └── uninstall   # cleanup
+│       └── source/         # the web interface (compiled CGI)
+│           ├── module_cgi.c    # config form, status page, system-log view
+│           ├── module_cfg.c/.h # read/write the settings file
+│           ├── module.h        # module name / paths
+│           └── Makefile        # -> /opt/tedge/{bin/cgi, www/*.cgi}
 ├── scripts/setup-build-env.sh
 └── docs/PLATFORMS.md       # ICR platform ↔ architecture reference
 ```
 
 On the router the module installs to `/opt/tedge/`.
+
+## Web interface
+
+The module adds a page under **Customization → Router Apps → thin-edge.io** with:
+
+- **Configuration** — a form for the Cumulocity connection settings (URL,
+  registration mode, device ID/OTP, and Basic-auth credentials). Saving writes
+  `/opt/tedge/etc/settings` and runs `etc/init restart` to apply the change.
+- **Upload Certificate** — uploads the router's self-signed device certificate
+  to Cumulocity's trusted certificates (for `self-signed` mode). Enter a
+  Cumulocity user and password; the page runs `tedge cert upload c8y` and shows
+  the result. The credentials are used only for the upload and are not stored.
+- **Status** — the live daemon status and the most recent Cumulocity mapper log.
+- **System Log** — the router's system log, filtered to this module.
+
+The page is a single compiled CGI (`source/module_cgi.c`) built against the
+SDK's `libum`. The router's web server enforces login on it (via the standard
+`www/.htpasswd` link) and `libum` adds the CSRF check.
 
 ## Building
 
@@ -113,7 +136,7 @@ You can also edit `/opt/tedge/etc/settings` over SSH and run
 |----------------|----------------------|
 | `c8y-ca`       | Downloads a device certificate from the Cumulocity Certificate Authority using a one-time password. The registration URL (with the OTP) is printed to the log; the OTP defaults to `md5(device-id)` if not set. **Recommended.** |
 | `basic`        | Uses a device username + password (`MOD_TEDGE_DEVICE_USER` / `MOD_TEDGE_DEVICE_PASSWORD`). |
-| `self-signed`  | Creates a self-signed certificate that you upload to Cumulocity manually. |
+| `self-signed`  | Creates a self-signed device certificate on the router. Upload it to Cumulocity from the **Upload Certificate** page (or with `tedge cert upload c8y --user <c8y-user>` over SSH). |
 
 ## Operating
 

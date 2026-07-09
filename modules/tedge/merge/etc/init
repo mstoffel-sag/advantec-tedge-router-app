@@ -202,12 +202,45 @@ case "$1" in
         status_tedge
         exit $?
         ;;
+    upload-cert)
+        # Upload the router's self-signed device certificate to Cumulocity's
+        # trusted certificates. Invoked from the web UI (source/module_cgi.c).
+        # The Cumulocity user comes from $MOD_TEDGE_C8Y_USER and the password
+        # from $C8Y_PASSWORD (read by tedge), both set in the environment by the
+        # caller so they never appear in the process list or logs.
+        "$BIN/tedge" init --user root --group root >/dev/null 2>&1 || true
+        if [ -n "$MOD_TEDGE_C8Y_URL" ]; then
+            url=$(normalize_url "$MOD_TEDGE_C8Y_URL")
+            [ "$(tedge config get c8y.url 2>/dev/null)" = "$url" ] || tedge config set c8y.url "$url"
+        fi
+        if [ -z "$MOD_TEDGE_C8Y_USER" ]; then
+            echo "ERROR: no Cumulocity user provided"; exit 1
+        fi
+        if [ -z "$C8Y_PASSWORD" ]; then
+            echo "ERROR: no Cumulocity password provided"; exit 1
+        fi
+        cert_path=$(tedge config get device.cert_path 2>/dev/null)
+        if [ -n "$cert_path" ] && [ ! -f "$cert_path" ]; then
+            echo "ERROR: no device certificate found at $cert_path."
+            echo "Set the registration mode to self-signed, enable the service and"
+            echo "(re)start it to create a certificate, then upload it here."
+            exit 1
+        fi
+        echo "Uploading certificate to Cumulocity as user '$MOD_TEDGE_C8Y_USER'..."
+        if tedge cert upload c8y --user "$MOD_TEDGE_C8Y_USER"; then
+            echo "Certificate uploaded successfully."
+        else
+            rc=$?
+            echo "Certificate upload failed (exit $rc)."
+            exit "$rc"
+        fi
+        ;;
     defaults)
         cp "$MOD_DEFAULTS" "$MOD_SETTINGS"
         echo "Settings reset to defaults"
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|defaults}"
+        echo "Usage: $0 {start|stop|restart|status|upload-cert|defaults}"
         exit 1
         ;;
 esac
