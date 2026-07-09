@@ -15,7 +15,9 @@ MOD_TEDGE_C8Y_URL=
 #   c8y-ca      Cumulocity Certificate Authority (recommended). The device
 #               downloads a certificate using a one-time password.
 #   basic       Basic auth using a device username + password.
-#   self-signed Create a self-signed certificate (requires interactive upload).
+#   self-signed Create a self-signed device certificate on the router, then
+#               upload it to Cumulocity from the web UI (Upload Certificate) or
+#               with "tedge cert upload c8y --user <c8y-user>".
 MOD_TEDGE_CA=c8y-ca
 
 # Device external ID (the identifier shown in Cumulocity). Leave empty to derive

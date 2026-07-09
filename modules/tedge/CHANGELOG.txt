@@ -1,6 +1,14 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.1.0
+-----
+* Web UI: add an "Upload Certificate" page that uploads the router's
+  self-signed device certificate to Cumulocity's trusted certificates
+  (runs "tedge cert upload c8y"), for the self-signed registration mode.
+* etc/init: add an "upload-cert" action used by the web UI (credentials are
+  passed via the environment, not the command line).
+
 1.0.0
 -----
 * Initial release.

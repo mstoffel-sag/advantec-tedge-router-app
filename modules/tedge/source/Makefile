@@ -22,6 +22,8 @@ install:
 	@install -m 755 $(OBJDIR)/$(MODULE_CGI_EXE) $(DESTDIR)/bin/cgi
 	@ln -s ../bin/cgi   $(DESTDIR)/www/index.cgi
 	@ln -s ../bin/cgi   $(DESTDIR)/www/set.cgi
+	@ln -s ../bin/cgi   $(DESTDIR)/www/cert.cgi
+	@ln -s ../bin/cgi   $(DESTDIR)/www/certup.cgi
 	@ln -s ../bin/cgi   $(DESTDIR)/www/status.cgi
 	@ln -s ../bin/cgi   $(DESTDIR)/www/slog.cgi
 	@ln -s /etc/htpasswd $(DESTDIR)/www/.htpasswd

@@ -62,6 +62,10 @@ The module adds a page under **Customization → Router Apps → thin-edge.io** 
 - **Configuration** — a form for the Cumulocity connection settings (URL,
   registration mode, device ID/OTP, and Basic-auth credentials). Saving writes
   `/opt/tedge/etc/settings` and runs `etc/init restart` to apply the change.
+- **Upload Certificate** — uploads the router's self-signed device certificate
+  to Cumulocity's trusted certificates (for `self-signed` mode). Enter a
+  Cumulocity user and password; the page runs `tedge cert upload c8y` and shows
+  the result. The credentials are used only for the upload and are not stored.
 - **Status** — the live daemon status and the most recent Cumulocity mapper log.
 - **System Log** — the router's system log, filtered to this module.
 
@@ -132,7 +136,7 @@ You can also edit `/opt/tedge/etc/settings` over SSH and run
 |----------------|----------------------|
 | `c8y-ca`       | Downloads a device certificate from the Cumulocity Certificate Authority using a one-time password. The registration URL (with the OTP) is printed to the log; the OTP defaults to `md5(device-id)` if not set. **Recommended.** |
 | `basic`        | Uses a device username + password (`MOD_TEDGE_DEVICE_USER` / `MOD_TEDGE_DEVICE_PASSWORD`). |
-| `self-signed`  | Creates a self-signed certificate that you upload to Cumulocity manually. |
+| `self-signed`  | Creates a self-signed device certificate on the router. Upload it to Cumulocity from the **Upload Certificate** page (or with `tedge cert upload c8y --user <c8y-user>` over SSH). |
 
 ## Operating
 
