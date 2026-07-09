@@ -9,3 +9,4 @@
 #   v4i  = aarch64 routers  <-- ICR-1642
 #
 tedge = v2i v3 v4 v4i
+relay = v2i v3 v4 v4i

@@ -1,0 +1,19 @@
+# Cumulocity custom operation: c8y_Relay
+#
+# etc/install symlinks this file into /opt/tedge/operations/c8y/ and runs
+# `tedge reconnect c8y`, which makes the mapper announce c8y_Relay as a supported
+# operation (SmartREST 114) and route matching operations to the handler below.
+#
+# on_fragment is the SmartREST *template message id* that carries the operation.
+# You must create (or reuse) a Cumulocity SmartREST template that emits this id
+# with the desired relay state as a parameter, and wire it to a device-control
+# UI/tab or send it via the REST API. Replace 5xx below with your template id.
+#
+# NOTE: the exact operation-file schema is tied to the bundled thin-edge.io
+# version (packages/tedge/version.txt). Validate this [exec] block against that
+# version's "custom operations" documentation before relying on it in production.
+
+[exec]
+topic = "c8y/s/ds"
+on_fragment = "5xx"
+command = "/opt/relay/bin/relay-c8y-op"

@@ -1,0 +1,15 @@
+# Relay extension configuration.
+#
+# Copied to /opt/relay/etc/settings on first install; editable from the router
+# web interface (Customization > Router Apps > relay) or directly in the file.
+# Run "/opt/relay/etc/init restart" after a change.
+
+# Start the relay agent automatically (1 = enabled, 0 = disabled).
+MOD_RELAY_ENABLED=0
+
+# Digital-output index this module controls on the router (see relay-control).
+MOD_RELAY_OUTPUT=0
+
+# thin-edge command topic identifier for this relay. The agent subscribes to
+# relay/$MOD_RELAY_ID/set and the c8y_Relay operation targets the same id.
+MOD_RELAY_ID=main

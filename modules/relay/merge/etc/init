@@ -1,0 +1,72 @@
+#!/bin/sh
+# ICR-OS service control for the relay extension.
+# Called with start|stop|restart|status|defaults. Supervises the relay agent
+# directly via a pid file (no dependency on the host init system).
+
+MOD_NAME=relay
+MOD_DIR=/opt/$MOD_NAME
+BIN=$MOD_DIR/bin
+MOD_DEFAULTS=$MOD_DIR/etc/defaults
+MOD_SETTINGS=$MOD_DIR/etc/settings
+[ -L "$MOD_SETTINGS" ] && MOD_SETTINGS=$(readlink "$MOD_SETTINGS")
+
+# thin-edge.io environment (PATH incl. the tedge CLI, TEDGE_CONFIG_DIR, ...).
+[ -f /opt/tedge/env ] && . /opt/tedge/env
+
+[ -f "$MOD_SETTINGS" ] || cp "$MOD_DEFAULTS" "$MOD_SETTINGS"
+. "$MOD_SETTINGS"
+
+# The agent reads its configuration from the environment.
+export MOD_RELAY_OUTPUT MOD_RELAY_ID
+
+if   [ -d /var/run ]; then PIDDIR=/var/run
+elif [ -d /run ];     then PIDDIR=/run
+else                       PIDDIR=/tmp
+fi
+LOGDIR=/var/log/$MOD_NAME
+mkdir -p "$LOGDIR" 2>/dev/null || true
+PIDFILE="$PIDDIR/$MOD_NAME-agent.pid"
+
+log() { /usr/bin/logger -t "$MOD_NAME" "$1" 2>/dev/null; echo "$1"; }
+
+is_running() {
+    [ -f "$PIDFILE" ] || return 1
+    kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null
+}
+
+start_relay() {
+    if is_running; then echo "  relay-agent already running"; return 0; fi
+    log "Starting $MOD_NAME (output $MOD_RELAY_OUTPUT, id $MOD_RELAY_ID)"
+    "$BIN/relay-agent" >> "$LOGDIR/agent.log" 2>&1 &
+    echo $! > "$PIDFILE"
+    echo "  started relay-agent (pid $!)"
+}
+
+stop_relay() {
+    log "Stopping $MOD_NAME"
+    if [ -f "$PIDFILE" ]; then
+        kill "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null
+        rm -f "$PIDFILE"
+    fi
+    pkill -f "$BIN/relay-agent" 2>/dev/null || true
+    echo "  stopped relay-agent"
+}
+
+case "$1" in
+    start)
+        [ "$MOD_RELAY_ENABLED" = "1" ] || { echo "$MOD_NAME is disabled (set MOD_RELAY_ENABLED=1)"; exit 0; }
+        start_relay ;;
+    stop)
+        stop_relay ;;
+    restart)
+        stop_relay; sleep 1
+        [ "$MOD_RELAY_ENABLED" = "1" ] || { echo "$MOD_NAME is disabled (set MOD_RELAY_ENABLED=1)"; exit 0; }
+        start_relay ;;
+    status)
+        echo "Module $MOD_NAME:"
+        if is_running; then echo "  relay-agent: running"; else echo "  relay-agent: stopped"; exit 1; fi ;;
+    defaults)
+        cp "$MOD_DEFAULTS" "$MOD_SETTINGS"; echo "Settings reset to defaults" ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status|defaults}"; exit 1 ;;
+esac

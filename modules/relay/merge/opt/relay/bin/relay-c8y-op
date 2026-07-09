@@ -1,0 +1,18 @@
+#!/bin/sh
+# relay-c8y-op — handler for the Cumulocity c8y_Relay custom operation (Pattern B).
+#
+# thin-edge.io's c8y mapper invokes this when a c8y_Relay operation arrives,
+# passing the inbound SmartREST message fields as arguments, e.g.
+#   <templateId>,<deviceId>,<state>
+# (see operations/c8y/c8y_Relay). We take the LAST field as the desired state so
+# the handler is tolerant of the leading template/device fields.
+set -eu
+[ -f /opt/tedge/env ] && . /opt/tedge/env
+
+# thin-edge may pass the whole comma-separated payload as one argument, or the
+# fields as separate arguments. Normalise both into the last non-empty token.
+raw="$*"
+state=$(printf '%s' "$raw" | tr ',' '\n' | sed '/^$/d' | tail -n 1)
+
+HERE=$(dirname "$0")
+"$HERE/relay-control" "$state" "${MOD_RELAY_OUTPUT:-0}"
