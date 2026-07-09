@@ -5,8 +5,9 @@ name: build
 #   v2i  armv5   |  v3  armv7   |  v4  aarch64  |  v4i  aarch64 (ICR-1642)
 #
 # Each matrix job sets up the Advantech build environment (cross toolchains +
-# Router App SDK) exactly like scripts/setup-build-env.sh and produces
-# images/tedge/tedge.<platform>.tgz, uploaded as a build artifact. Pushing a
+# Router App SDK) exactly like scripts/setup-build-env.sh and produces the
+# platform module (images/tedge/) plus every extension module discovered from
+# modules/Rules.mk (e.g. images/relay/), uploaded as build artifacts. Pushing a
 # tag (v*) additionally publishes all Router Apps to a GitHub Release.
 
 on:
@@ -56,13 +57,15 @@ jobs:
 
       - name: Show build output
         working-directory: advantec-tedge-router-app
-        run: ls -l images/tedge/
+        run: ls -lR images/
 
-      - name: Upload Router App
+      - name: Upload Router Apps
         uses: actions/upload-artifact@v4
         with:
-          name: tedge-${{ matrix.platform }}
-          path: advantec-tedge-router-app/images/tedge/tedge.${{ matrix.platform }}.tgz
+          # The platform module (tedge) and every extension module (e.g. relay)
+          # are discovered from modules/Rules.mk and built by the step above.
+          name: routerapps-${{ matrix.platform }}
+          path: advantec-tedge-router-app/images/*/*.${{ matrix.platform }}.tgz
           if-no-files-found: error
 
   release:
