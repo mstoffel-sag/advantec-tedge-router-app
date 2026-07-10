@@ -21,6 +21,21 @@ make PLATFORMS="v4i"
 
 The resulting Router App is `images/tedge/tedge.v4i.tgz`.
 
+## ICR-4400 family (ICR-44xx)
+
+The **ICR-4400** routers (e.g. ICR-4434, ICR-4461) belong to the **`v4`**
+platform (aarch64 / ARM64). Build with:
+
+```sh
+make PLATFORMS="v4"
+```
+
+`v4` and `v4i` share the aarch64 toolchain and thin-edge.io `arm64` build, and
+both are built by default, so a single `make` produces apps for the ICR-1642 and
+the ICR-44xx. The relay extension uses the same ICR-OS `io` command on both; note
+the ICR-1642 has one binary output (OUT0) while the ICR-44xx has two (OUT0/OUT1),
+selectable via `MOD_RELAY_OUTPUT`.
+
 ## Notes
 
 - `v2i` and `v3` use a soft-float (`gnueabi`) ABI in the Advantech toolchain. The

@@ -18,6 +18,7 @@ SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
 
 ID="${MOD_RELAY_ID:-main}"
 OUTPUT="${MOD_RELAY_OUTPUT:-0}"
+export MOD_RELAY_PIN="${MOD_RELAY_PIN:-}"   # let relay-control see the pin override
 TOPIC="relay/${ID}/set"
 HERE=$(dirname "$0")
 TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"

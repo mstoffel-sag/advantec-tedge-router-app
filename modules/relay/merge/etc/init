@@ -17,7 +17,7 @@ MOD_SETTINGS=$MOD_DIR/etc/settings
 . "$MOD_SETTINGS"
 
 # The agent reads its configuration from the environment.
-export MOD_RELAY_OUTPUT MOD_RELAY_ID
+export MOD_RELAY_OUTPUT MOD_RELAY_ID MOD_RELAY_PIN
 
 if   [ -d /var/run ]; then PIDDIR=/var/run
 elif [ -d /run ];     then PIDDIR=/run

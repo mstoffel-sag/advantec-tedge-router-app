@@ -11,11 +11,17 @@
 # Cumulocity relay operations (c8y_Relay / c8y_RelayArray) use OPEN/CLOSED, where
 # CLOSED means the relay coil is energised and its normally-open contact closes.
 #
-# The output index defaults to $MOD_RELAY_OUTPUT (from the module settings) or 0.
+# The output is selected by (highest precedence first):
+#   $MOD_RELAY_PIN     an exact ICR-OS `io` output name (e.g. out0, out1, or an
+#                      expansion-port pin) -- use this when the name is not outN
+#   [output_index]     positional arg, else
+#   $MOD_RELAY_OUTPUT  the output index from the module settings, else 0
+# The pin name is "out${index}" unless $MOD_RELAY_PIN overrides it.
 set -eu
 
 STATE_ARG="${1:-}"
 INDEX="${2:-${MOD_RELAY_OUTPUT:-0}}"
+PIN="${MOD_RELAY_PIN:-out${INDEX}}"
 
 case "$STATE_ARG" in
     CLOSED|closed|on|ON|1|true|TRUE|yes)  VAL=1 ;;
@@ -24,20 +30,21 @@ case "$STATE_ARG" in
 esac
 
 # --- Hardware interface -------------------------------------------------------
-# Advantech ICR-OS exposes the router's binary outputs via the `io` utility,
-# e.g. `io set out0 1`. VERIFY the exact command/flags on the ICR-1642 (it may
-# also be a sysfs GPIO path or a gpiod line) and adjust here only.
+# ICR-OS exposes the router's binary outputs via the `io` utility, e.g.
+# `io set out0 1`. This works across ICR families (ICR-1642 has one output OUT0;
+# ICR-44xx has OUT0/OUT1; expansion boards add more). VERIFY the exact `io`
+# output names on your device (CLI application note) and adjust here only.
 drive_output() {
-    idx=$1 val=$2
+    pin=$1 idx=$2 val=$3
     if command -v io >/dev/null 2>&1; then
-        io set "out${idx}" "$val"
-    elif [ -w "/sys/class/gpio/relay${idx}/value" ]; then
-        echo "$val" > "/sys/class/gpio/relay${idx}/value"
+        io set "$pin" "$val"
+    elif [ -w "/sys/class/gpio/gpio${idx}/value" ]; then
+        echo "$val" > "/sys/class/gpio/gpio${idx}/value"
     else
-        echo "ERROR: no known relay interface for output ${idx}" >&2
+        echo "ERROR: no known relay interface for output '${pin}'" >&2
         return 1
     fi
 }
 
-drive_output "$INDEX" "$VAL"
-echo "relay output ${INDEX} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"
+drive_output "$PIN" "$INDEX" "$VAL"
+echo "relay output ${PIN} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"

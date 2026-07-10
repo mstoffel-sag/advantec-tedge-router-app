@@ -17,6 +17,11 @@
 # (Verify twin->inventory mapping on the bundled thin-edge.io version.)
 set -eu
 [ -f /opt/tedge/env ] && . /opt/tedge/env
+# Sourced by tedge-agent, whose environment does NOT carry the relay module
+# settings, so load them here to honour MOD_RELAY_OUTPUT / MOD_RELAY_PIN.
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+[ -f "$SETTINGS" ] && . "$SETTINGS"
+export MOD_RELAY_PIN="${MOD_RELAY_PIN:-}"   # let relay-control see the pin override
 
 MODE="${1:-}"; shift 2>/dev/null || true
 INDEX="${MOD_RELAY_OUTPUT:-0}"

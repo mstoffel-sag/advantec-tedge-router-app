@@ -11,5 +11,10 @@ the two integration patterns:
     mapper so the relay can be switched from the cloud; the new state is
     reflected into the managed object so the relay widgets update.
 
+Works on ICR routers that expose binary outputs via the ICR-OS "io" command,
+including the ICR-1642 (one output, OUT0) and the ICR-44xx family (OUT0/OUT1).
+Select the output with MOD_RELAY_OUTPUT, or set MOD_RELAY_PIN for a non-"outN"
+pin (e.g. an expansion port).
+
 Install the thin-edge.io platform module first, then this extension. Enable it on
 this module's configuration page. See docs/EXTENSION-API.md.

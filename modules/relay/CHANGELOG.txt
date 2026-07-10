@@ -7,6 +7,10 @@ relay Router App - Changelog
   MOD_RELAY_* can be edited from the cloud (Device Management > Configuration).
 * relay-agent now watches the settings file and reloads (re-exec) when it
   changes, so a cloud configuration update is applied without a manual restart.
+* Multi-device support (ICR-1642 and ICR-44xx): both use the same ICR-OS `io`
+  command. Add MOD_RELAY_PIN to name a non-"outN" output (e.g. expansion port),
+  and fix relay-c8y-op to source the module settings so cloud relay operations
+  honour MOD_RELAY_OUTPUT / MOD_RELAY_PIN (previously always drove output 0).
 
 1.1.0
 -----
