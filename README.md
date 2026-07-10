@@ -116,6 +116,26 @@ cd modules/tedge && make PLATFORM=v4i   # just this app, one platform
 > (internet access required). The pinned version lives in
 > `packages/tedge/Makefile` (`TEDGE_VERSION`) and `packages/tedge/version.txt`.
 
+## Extending with add-on Router Apps
+
+The `tedge` module is a frozen *platform* that ships thin-edge.io. Additional
+functionality is added as **independent extension modules** that plug into it at
+runtime (over the local MQTT bus and the Cumulocity operations registry) — the
+`tedge` module never has to be rebuilt to add a feature.
+
+Scaffold a new extension:
+
+```sh
+./scripts/new-extension.sh <name> "Short summary"   # creates modules/<name>/, registers it
+make PLATFORMS="v4i"                                 # → images/<name>/<name>.v4i.tgz
+```
+
+The recursive build discovers modules from the matrix in `modules/Rules.mk`, so
+a new extension needs no Makefile edits. See [docs/EXTENSION-API.md](docs/EXTENSION-API.md)
+for the platform/extension contract and [modules/relay](modules/relay) for a
+worked example that switches a relay from a Cumulocity operation and from the
+local MQTT bus.
+
 ## Installing on the router
 
 1. Open the router web interface → **Customization → Router Apps** (User Modules).

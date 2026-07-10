@@ -1,0 +1,13 @@
+Switches a digital output (relay) on the router in response to a Cumulocity IoT
+operation, and lets it be toggled locally over the thin-edge.io MQTT bus.
+
+This is an extension for the thin-edge.io platform Router App. It demonstrates
+the two integration patterns:
+
+  * A daemon (relay-agent) subscribes to the local MQTT topic relay/<id>/set and
+    drives the output. Test it with:  tedge mqtt pub relay/main/set on
+  * A Cumulocity custom operation (c8y_Relay) is registered with the thin-edge.io
+    mapper so the relay can be switched from the cloud.
+
+Install the thin-edge.io platform module first, then this extension. Enable it on
+this module's configuration page. See docs/EXTENSION-API.md.

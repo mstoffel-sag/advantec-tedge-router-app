@@ -1,0 +1,11 @@
+relay Router App - Changelog
+============================
+
+1.0.0
+-----
+* Initial release. thin-edge.io extension that controls a router digital output.
+* relay-agent: subscribes to the local MQTT topic relay/<id>/set (Pattern A).
+* c8y_Relay: Cumulocity custom operation registered with the tedge mapper,
+  handled by relay-c8y-op (Pattern B).
+* relay-control: the single hardware-specific script (adapt to the ICR-1642 I/O).
+* Built for ICR platforms v2i / v3 / v4 / v4i (ICR-1642 == v4i).
