@@ -1,6 +1,13 @@
 relay Router App - Changelog
 ============================
 
+1.2.0
+-----
+* Register /opt/relay/etc/settings with Cumulocity configuration management, so
+  MOD_RELAY_* can be edited from the cloud (Device Management > Configuration).
+* relay-agent now watches the settings file and reloads (re-exec) when it
+  changes, so a cloud configuration update is applied without a manual restart.
+
 1.1.0
 -----
 * Fix the Cumulocity operation wiring to match how thin-edge.io delivers the

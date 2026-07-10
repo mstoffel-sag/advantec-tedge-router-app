@@ -22,7 +22,15 @@ integration surface is:
 3. **The config / operations registry** — the platform's config dir is
    `/opt/tedge`. The Cumulocity mapper scans `/opt/tedge/operations/c8y/` for
    custom-operation declarations and announces them to the cloud.
-4. **Contract version** — `/opt/tedge/etc/contract-version` (integer). Bump it
+4. **The configuration-management registry** — `tedge-agent` has Cumulocity
+   configuration management built in, and the bundle already registers the
+   platform's own files (`tedge.toml`, `system.toml`, ...) in
+   `/opt/tedge/plugins/tedge-configuration-plugin.toml`. The platform ships the
+   helper `/opt/tedge/bin/tedge-config-register` (`add <marker> <path> <type>
+   [service]` / `remove <marker>`) which **appends/removes only its own
+   `[[files]]` block** (preserving the bundle's entries), so an extension can
+   make its file snapshot- and update-able from Cumulocity's Configuration tab.
+5. **Contract version** — `/opt/tedge/etc/contract-version` (integer). Bump it
    only on a breaking change to any of the above. Extensions may read it in
    their `install` hook and refuse to install against an incompatible platform.
 
@@ -55,6 +63,30 @@ runtime dir — the platform's *source and build stay untouched*.
 > `[exec]` block / SmartREST template against that version's docs before relying
 > on it in production. The registration *mechanism* (symlink + reconnect) is
 > stable; the file format is what to confirm.
+
+### Pattern C — cloud-managed configuration
+
+To let an operator edit an extension's settings from Cumulocity (Device
+Management > Configuration) instead of only the local web form, register the
+settings file in the `install` hook and deregister it in `uninstall`:
+
+```sh
+# install
+[ -x /opt/tedge/bin/tedge-config-register ] && \
+    /opt/tedge/bin/tedge-config-register add <name> /opt/<name>/etc/settings <name>
+# uninstall
+[ -x /opt/tedge/bin/tedge-config-register ] && \
+    /opt/tedge/bin/tedge-config-register remove <name>
+```
+
+`tedge-config-register` appends only its own marked block, so it never disturbs
+the platform's own managed files (`tedge.toml`, `system.toml`, ... are already
+cloud-managed by the bundle). The device can then snapshot the current file and
+receive updated versions. `tedge-agent` writes the new file; **applying it is the
+extension's job** — either watch the settings file and reload (as `modules/relay`'s
+agent does), or pass a `service` argument so `tedge-agent` restarts a host-managed
+service. Do **not** register files that contain secrets (e.g. device passwords) —
+snapshots are uploaded to the cloud.
 
 ## Anatomy of an extension module
 

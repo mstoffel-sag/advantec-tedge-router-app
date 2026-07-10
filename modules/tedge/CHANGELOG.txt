@@ -1,6 +1,13 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.2.0
+-----
+* Add the bin/tedge-config-register helper so extension modules can register
+  their own files with Cumulocity configuration management (Device Management >
+  Configuration) without clobbering the entries the thin-edge.io bundle already
+  ships (tedge.toml, system.toml, ...). See docs/EXTENSION-API.md.
+
 1.1.0
 -----
 * Web UI: add an "Upload Certificate" page that uploads the router's

@@ -1,0 +1,61 @@
+#!/bin/sh
+# tedge-config-register — register a file with thin-edge.io's configuration
+# management so it can be snapshotted/updated from Cumulocity IoT
+# (Device Management > Configuration).
+#
+# tedge-agent reads /opt/tedge/plugins/tedge-configuration-plugin.toml. The
+# thin-edge.io bundle already ships that file with entries for tedge.toml,
+# system.toml, etc. -- so this helper must PRESERVE existing content and only
+# add/remove its own entries. Each managed entry is an [[files]] block wrapped
+# in sentinel comments tagged with a unique marker, so add is idempotent and
+# remove touches only that block. Part of the platform contract
+# (see docs/EXTENSION-API.md).
+#
+#   tedge-config-register add <marker> <path> <type> [service]
+#   tedge-config-register remove <marker>
+#
+# <marker> is a unique id per entry (e.g. the module name). <type> is the name
+# shown in the Cumulocity Configuration tab. <service>, if given, is restarted by
+# tedge-agent after a config update (host service manager; see system.toml).
+set -eu
+
+TOML=/opt/tedge/plugins/tedge-configuration-plugin.toml
+
+begin() { echo "# >>> tedge-config-register reg:$1"; }
+end()   { echo "# <<< tedge-config-register reg:$1"; }
+
+remove_block() {
+    marker=$1
+    [ -f "$TOML" ] || return 0
+    awk -v s="$(begin "$marker")" -v e="$(end "$marker")" '
+        $0==s { skip=1; next }
+        $0==e { skip=0; next }
+        !skip { print }
+    ' "$TOML" > "$TOML.tmp.$$" && mv "$TOML.tmp.$$" "$TOML"
+}
+
+case "${1:-}" in
+    add)
+        marker="${2:?marker required}"; path="${3:?path required}"; type="${4:?type required}"
+        service="${5:-}"
+        mkdir -p "$(dirname "$TOML")"
+        [ -f "$TOML" ] || : > "$TOML"
+        remove_block "$marker"     # idempotent: drop any previous entry first
+        {
+            echo ""
+            begin "$marker"
+            echo "[[files]]"
+            echo "path = \"$path\""
+            echo "type = \"$type\""
+            [ -n "$service" ] && echo "service = \"$service\""
+            end "$marker"
+        } >> "$TOML"
+        ;;
+    remove)
+        remove_block "${2:?marker required}"
+        ;;
+    *)
+        echo "usage: tedge-config-register {add <marker> <path> <type> [service]|remove <marker>}" >&2
+        exit 2
+        ;;
+esac

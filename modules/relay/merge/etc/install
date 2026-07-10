@@ -30,4 +30,12 @@ if [ -d "$MOD_DIR/operations/c8y" ]; then
     tedge reconnect c8y >/dev/null 2>&1 || true
 fi
 
+# Register this extension's settings for Cumulocity configuration management, so
+# MOD_RELAY_* can be edited from the cloud (Device Management > Configuration)
+# instead of only the local web form. The agent applies changes live (it watches
+# the settings file), so no 'service' restart hook is needed.
+if [ -x "$TEDGE_DIR/bin/tedge-config-register" ]; then
+    "$TEDGE_DIR/bin/tedge-config-register" add relay "$MOD_DIR/etc/settings" relay || true
+fi
+
 exit 0
