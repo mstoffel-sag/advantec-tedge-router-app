@@ -3,9 +3,22 @@ relay Router App - Changelog
 
 1.0.0
 -----
-* Initial release. thin-edge.io extension that controls a router digital output.
-* relay-agent: subscribes to the local MQTT topic relay/<id>/set (Pattern A).
-* c8y_Relay: Cumulocity custom operation registered with the tedge mapper,
-  handled by relay-c8y-op (Pattern B).
-* relay-control: the single hardware-specific script (adapt to the ICR-1642 I/O).
-* Built for ICR platforms v2i / v3 / v4 / v4i (ICR-1642 == v4i).
+* Initial release. thin-edge.io extension that switches one or more of the
+  router's digital outputs (relays) from Cumulocity IoT.
+* Cumulocity operations:
+    - c8y_Relay      single relay (relayState OPEN/CLOSED); drives the first
+                     configured output.
+    - c8y_RelayArray the Cumulocity RelayArray widget; drives every configured
+                     output from its matching array position.
+  The new state is reflected into the device managed object (c8y_Relay /
+  c8y_RelayArray twin fragment) so the relay widgets update, and the initial
+  state is seeded on start so the widget renders one toggle per output.
+* Multiple outputs via MOD_RELAY_OUTPUTS (ordered list of ICR-OS `io` names):
+  ICR-1642 has one output (out0); ICR-44xx has two (out0 out1); expansion-port
+  outputs are supported by name.
+* Cloud-only: relays are switched by Cumulocity operations (no local MQTT topic
+  and no persistent daemon). Configuration changes apply on the next operation.
+* Settings registered with Cumulocity configuration management, so the output
+  list can be edited from the cloud (Device Management > Configuration).
+* relay-control is the single hardware-specific script (ICR-OS `io` command).
+* Built for ICR platforms v2i / v3 / v4 / v4i (ICR-1642 = v4i; ICR-44xx = v4).

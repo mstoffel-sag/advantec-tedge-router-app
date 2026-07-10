@@ -1,37 +1,42 @@
 #!/bin/sh
-# relay-control <on|off|1|0|true|false> [output_index]
+# relay-control <state> <pin>
 #
-# Drives a digital output (relay) on the router. This is the ONE hardware-specific
-# script in the extension; everything else is generic. Adapt the drive_output()
-# function to the ICR-1642's actual I/O interface.
+# Drives one digital output (relay) on the router. This is the ONE
+# hardware-specific script in the extension; adapt drive_output() to the device.
 #
-# The output index defaults to $MOD_RELAY_OUTPUT (from the module settings) or 0.
+# <state> accepts the Cumulocity relay values and convenient aliases:
+#   CLOSED | closed | on | 1 | true   -> energise the relay (contact CLOSED)
+#   OPEN   | open   | off| 0 | false  -> de-energise      (contact OPEN)
+# <pin> is the exact ICR-OS `io` output name, e.g. out0, out1, or an
+# expansion-port output. It comes from MOD_RELAY_OUTPUTS (see the settings).
 set -eu
 
 STATE_ARG="${1:-}"
-INDEX="${2:-${MOD_RELAY_OUTPUT:-0}}"
+PIN="${2:-}"
+[ -n "$PIN" ] || { echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2; }
 
 case "$STATE_ARG" in
-    on|ON|1|true|TRUE|yes)   VAL=1 ;;
-    off|OFF|0|false|FALSE|no) VAL=0 ;;
-    *) echo "usage: relay-control <on|off> [output_index]" >&2; exit 2 ;;
+    CLOSED|closed|on|ON|1|true|TRUE|yes)  VAL=1 ;;
+    OPEN|open|off|OFF|0|false|FALSE|no)   VAL=0 ;;
+    *) echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2 ;;
 esac
 
 # --- Hardware interface -------------------------------------------------------
-# Advantech ICR-OS exposes the router's binary outputs via the `io` utility,
-# e.g. `io set out0 1`. VERIFY the exact command/flags on the ICR-1642 (it may
-# also be a sysfs GPIO path or a gpiod line) and adjust here only.
+# ICR-OS exposes the router's binary outputs via the `io` utility, e.g.
+# `io set out0 1`. This works across ICR families (ICR-1642 has one output OUT0;
+# ICR-44xx has OUT0/OUT1; expansion boards add more). VERIFY the exact `io`
+# output names on your device (CLI application note) and adjust here only.
 drive_output() {
-    idx=$1 val=$2
+    pin=$1 val=$2
     if command -v io >/dev/null 2>&1; then
-        io set "out${idx}" "$val"
-    elif [ -w "/sys/class/gpio/relay${idx}/value" ]; then
-        echo "$val" > "/sys/class/gpio/relay${idx}/value"
+        io set "$pin" "$val"
+    elif [ -w "/sys/class/gpio/${pin}/value" ]; then
+        echo "$val" > "/sys/class/gpio/${pin}/value"
     else
-        echo "ERROR: no known relay interface for output ${idx}" >&2
+        echo "ERROR: no known relay interface for output '${pin}'" >&2
         return 1
     fi
 }
 
-drive_output "$INDEX" "$VAL"
-echo "relay output ${INDEX} -> $([ "$VAL" = 1 ] && echo ON || echo OFF)"
+drive_output "$PIN" "$VAL"
+echo "relay ${PIN} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"

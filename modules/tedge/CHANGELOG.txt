@@ -1,14 +1,6 @@
 thin-edge.io Router App - Changelog
 ===================================
 
-1.1.0
------
-* Web UI: add an "Upload Certificate" page that uploads the router's
-  self-signed device certificate to Cumulocity's trusted certificates
-  (runs "tedge cert upload c8y"), for the self-signed registration mode.
-* etc/init: add an "upload-cert" action used by the web UI (credentials are
-  passed via the environment, not the command line).
-
 1.0.0
 -----
 * Initial release.
@@ -16,7 +8,13 @@ thin-edge.io Router App - Changelog
 * Connects the router to Cumulocity IoT (built-in TLS MQTT bridge).
 * Supports Cumulocity Certificate Authority (c8y-ca), basic-auth and
   self-signed registration modes, configurable from the router web UI.
-* Web interface (Router Apps page): a Cumulocity connection configuration
-  form, a service status/log overview, and a filtered system-log view.
+* Web interface (Router Apps page): a Cumulocity connection configuration form,
+  an "Upload Certificate" page that uploads the router's self-signed device
+  certificate to Cumulocity (runs "tedge cert upload c8y", credentials passed
+  via the environment), a service status/log overview, and a filtered
+  system-log view.
 * Supervises the mosquitto broker, tedge-mapper-c8y and tedge-agent daemons.
+* Ships the bin/tedge-config-register helper so extension modules can register
+  their own files with Cumulocity configuration management without clobbering
+  the entries the thin-edge.io bundle already ships. See docs/EXTENSION-API.md.
 * Built for ICR platforms v2i / v3 / v4 / v4i (ICR-1642 == v4i).

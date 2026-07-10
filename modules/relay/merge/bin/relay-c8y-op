@@ -1,18 +1,63 @@
 #!/bin/sh
-# relay-c8y-op — handler for the Cumulocity c8y_Relay custom operation (Pattern B).
+# relay-c8y-op <mode> <state...> — Cumulocity relay operation handler.
 #
-# thin-edge.io's c8y mapper invokes this when a c8y_Relay operation arrives,
-# passing the inbound SmartREST message fields as arguments, e.g.
-#   <templateId>,<deviceId>,<state>
-# (see operations/c8y/c8y_Relay). We take the LAST field as the desired state so
-# the handler is tolerant of the leading template/device fields.
+# Invoked by thin-edge.io's c8y mapper for the operations declared in
+# operations/c8y/{c8y_Relay,c8y_RelayArray}. thin-edge substitutes the operation
+# JSON into the command line (see those files), so this receives the already
+# extracted state values as arguments -- NOT a raw SmartREST CSV message.
+#
+#   relay-c8y-op relay      <relayState>            # c8y_Relay:  drives the FIRST output
+#   relay-c8y-op relayarray <"CLOSED","OPEN",...>   # c8y_RelayArray: drives ALL outputs
+#
+# The outputs this device owns are MOD_RELAY_OUTPUTS (ordered, space-separated
+# ICR-OS `io` names). For c8y_RelayArray, array position i drives output i.
+#
+# On success the new state is reflected into the device's managed object (the
+# c8y_Relay / c8y_RelayArray twin fragment) so the Cumulocity relay widgets show
+# it. (Verify twin->inventory mapping on the bundled thin-edge.io version.)
 set -eu
 [ -f /opt/tedge/env ] && . /opt/tedge/env
-
-# thin-edge may pass the whole comma-separated payload as one argument, or the
-# fields as separate arguments. Normalise both into the last non-empty token.
-raw="$*"
-state=$(printf '%s' "$raw" | tr ',' '\n' | sed '/^$/d' | tail -n 1)
-
+# Sourced by tedge-agent, whose environment does NOT carry the relay settings,
+# so load them here to honour MOD_RELAY_OUTPUTS.
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+[ -f "$SETTINGS" ] && . "$SETTINGS"
+OUTPUTS="${MOD_RELAY_OUTPUTS:-out0}"
 HERE=$(dirname "$0")
-"$HERE/relay-control" "$state" "${MOD_RELAY_OUTPUT:-0}"
+TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
+
+canon() { case "$1" in CLOSED|closed|on|ON|1|true|TRUE|yes) echo CLOSED ;; *) echo OPEN ;; esac; }
+reflect() { tedge mqtt pub -r "$TWIN_BASE/$1" "$2" 2>/dev/null || true; }
+
+MODE="${1:-}"; shift 2>/dev/null || true
+
+case "$MODE" in
+    relay)
+        STATE="${1:-}"
+        [ -n "$STATE" ] || { echo "no relayState given" >&2; exit 2; }
+        first=$(printf '%s\n' $OUTPUTS | head -n 1)
+        "$HERE/relay-control" "$STATE" "$first"
+        reflect c8y_Relay "{\"relayState\":\"$(canon "$STATE")\"}"
+        ;;
+    relayarray)
+        # Tolerate JSON (["CLOSED","OPEN"]) or bare (CLOSED,OPEN) rendering,
+        # possibly split across several arguments.
+        clean=$(printf '%s' "$*" | tr -d '[]" ' | tr -s ',')
+        [ -n "$clean" ] || { echo "empty c8y_RelayArray" >&2; exit 2; }
+        # Drive each configured output from the matching array position.
+        i=1; driven=""
+        for pin in $OUTPUTS; do
+            elem=$(printf '%s' "$clean" | awk -F, -v n="$i" 'NR==1{ if (n<=NF) print $n }')
+            if [ -n "$elem" ]; then
+                "$HERE/relay-control" "$elem" "$pin"
+                driven="${driven:+$driven,}\"$(canon "$elem")\""
+            fi
+            i=$((i + 1))
+        done
+        [ -n "$driven" ] || { echo "no array elements matched MOD_RELAY_OUTPUTS ($OUTPUTS)" >&2; exit 2; }
+        # Reflect what we actually drove (one element per owned output).
+        reflect c8y_RelayArray "[$driven]"
+        ;;
+    *)
+        echo "usage: relay-c8y-op {relay <state>|relayarray <array>}" >&2
+        exit 2 ;;
+esac

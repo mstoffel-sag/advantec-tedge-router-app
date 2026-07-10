@@ -177,6 +177,12 @@ if [ -d "\$MOD_DIR/operations/c8y" ]; then
     tedge reconnect c8y >/dev/null 2>&1 || true
 fi
 
+# Expose this extension's settings to Cumulocity configuration management, so
+# MOD_${UPPER}_* can be edited from the cloud (Device Management > Configuration).
+if [ -x "\$TEDGE_DIR/bin/tedge-config-register" ]; then
+    "\$TEDGE_DIR/bin/tedge-config-register" add $NAME "\$MOD_DIR/etc/settings" $NAME || true
+fi
+
 exit 0
 EOF
 
@@ -199,6 +205,10 @@ if [ -d "\$TEDGE_DIR/operations/c8y" ]; then
     done
     tedge reconnect c8y >/dev/null 2>&1 || true
 fi
+
+# Deregister the settings file from configuration management.
+[ -x "\$TEDGE_DIR/bin/tedge-config-register" ] && \\
+    "\$TEDGE_DIR/bin/tedge-config-register" remove $NAME 2>/dev/null || true
 
 exit 0
 EOF

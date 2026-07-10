@@ -1,19 +1,18 @@
-# Cumulocity custom operation: c8y_Relay
+# Cumulocity custom operation: c8y_Relay (single relay)
 #
 # etc/install symlinks this file into /opt/tedge/operations/c8y/ and runs
-# `tedge reconnect c8y`, which makes the mapper announce c8y_Relay as a supported
-# operation (SmartREST 114) and route matching operations to the handler below.
+# `tedge reconnect c8y`. thin-edge.io then announces c8y_Relay as a supported
+# operation (aggregated into the SmartREST 114 message from the file names in
+# that directory) and routes matching operations to the command below.
 #
-# on_fragment is the SmartREST *template message id* that carries the operation.
-# You must create (or reuse) a Cumulocity SmartREST template that emits this id
-# with the desired relay state as a parameter, and wire it to a device-control
-# UI/tab or send it via the REST API. Replace 5xx below with your template id.
+# c8y_Relay is a JSON operation: {"c8y_Relay":{"relayState":"OPEN"|"CLOSED"}}.
+# on_fragment names that JSON fragment; thin-edge substitutes the extracted
+# value into the command line (no SmartREST CSV parsing needed).
 #
-# NOTE: the exact operation-file schema is tied to the bundled thin-edge.io
-# version (packages/tedge/version.txt). Validate this [exec] block against that
-# version's "custom operations" documentation before relying on it in production.
+# NOTE: validate the [exec] schema against the bundled thin-edge.io version
+# (packages/tedge/version.txt) before relying on it in production.
 
 [exec]
 topic = "c8y/s/ds"
-on_fragment = "5xx"
-command = "/opt/relay/bin/relay-c8y-op"
+on_fragment = "c8y_Relay"
+command = "/opt/relay/bin/relay-c8y-op relay ${.payload.c8y_Relay.relayState}"

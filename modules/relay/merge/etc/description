@@ -1,13 +1,23 @@
-Switches a digital output (relay) on the router in response to a Cumulocity IoT
-operation, and lets it be toggled locally over the thin-edge.io MQTT bus.
+Switches one or more digital outputs (relays) on the router in response to
+Cumulocity IoT operations.
 
-This is an extension for the thin-edge.io platform Router App. It demonstrates
-the two integration patterns:
+This is an extension for the thin-edge.io platform Router App. It registers two
+Cumulocity custom operations with the thin-edge.io mapper:
 
-  * A daemon (relay-agent) subscribes to the local MQTT topic relay/<id>/set and
-    drives the output. Test it with:  tedge mqtt pub relay/main/set on
-  * A Cumulocity custom operation (c8y_Relay) is registered with the thin-edge.io
-    mapper so the relay can be switched from the cloud.
+  * c8y_Relay        - a single relay (relayState OPEN/CLOSED); drives the first
+                       configured output.
+  * c8y_RelayArray   - the Cumulocity RelayArray widget; drives every configured
+                       output from the matching array position.
+
+The new state is reflected into the device managed object so the relay widgets
+update, and the initial state is seeded on start so the widget renders one toggle
+per output. It also registers its settings with Cumulocity configuration
+management, so the output list can be changed from the cloud.
+
+Works on ICR routers that expose binary outputs via the ICR-OS "io" command,
+including the ICR-1642 (one output: out0) and the ICR-44xx family (out0 out1).
+List the outputs this device controls in MOD_RELAY_OUTPUTS (exact `io` names,
+e.g. "out0 out1", or an expansion-port name).
 
 Install the thin-edge.io platform module first, then this extension. Enable it on
 this module's configuration page. See docs/EXTENSION-API.md.

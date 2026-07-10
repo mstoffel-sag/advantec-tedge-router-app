@@ -34,4 +34,10 @@ chmod +x "$MOD_DIR/bin/"* "$MOD_DIR/etc/init" 2>/dev/null || true
 [ -d "$PREFIX/usr/bin" ] || mkdir -p "$PREFIX/usr/bin"
 [ -e "$PREFIX/usr/bin/tedge" ] || ln -sf "$MOD_DIR/bin/tedge" "$PREFIX/usr/bin/tedge"
 
+# Configuration management: thin-edge.io's own config (tedge.toml, system.toml,
+# ...) is already registered by the bundled plugins/tedge-configuration-plugin.toml,
+# so it is retrievable/updatable from Cumulocity out of the box. We only ship the
+# bin/tedge-config-register helper (chmod'd above) so extension modules can add
+# their own files to that list without clobbering it (see docs/EXTENSION-API.md).
+
 exit 0

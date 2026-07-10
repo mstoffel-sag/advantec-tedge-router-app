@@ -17,4 +17,8 @@ if [ -d "$TEDGE_DIR/operations/c8y" ]; then
     tedge reconnect c8y >/dev/null 2>&1 || true
 fi
 
+# Deregister the settings file from configuration management.
+[ -x "$TEDGE_DIR/bin/tedge-config-register" ] && \
+    "$TEDGE_DIR/bin/tedge-config-register" remove relay 2>/dev/null || true
+
 exit 0
