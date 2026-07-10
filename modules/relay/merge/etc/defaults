@@ -8,6 +8,7 @@
 MOD_RELAY_ENABLED=0
 
 # Digital-output index this module controls on the router (see relay-control).
+# Also the index into a c8y_RelayArray operation that this device drives.
 MOD_RELAY_OUTPUT=0
 
 # thin-edge command topic identifier for this relay. The agent subscribes to

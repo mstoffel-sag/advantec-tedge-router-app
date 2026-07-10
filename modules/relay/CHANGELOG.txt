@@ -1,6 +1,19 @@
 relay Router App - Changelog
 ============================
 
+1.1.0
+-----
+* Fix the Cumulocity operation wiring to match how thin-edge.io delivers the
+  built-in relay operations:
+  - c8y_Relay is handled as a JSON operation (on_fragment = c8y_Relay), with the
+    relayState (OPEN/CLOSED) substituted into the command by the mapper.
+  - Add c8y_RelayArray for the Cumulocity RelayArray widget: the desired array
+    is parsed and this device drives the element at $MOD_RELAY_OUTPUT.
+* relay-control now understands the Cumulocity OPEN/CLOSED values (CLOSED =
+  relay energised), in addition to on/off aliases.
+* Reflect the new relay state into the device managed object (c8y_Relay /
+  c8y_RelayArray twin fragments) so the relay widgets update.
+
 1.0.0
 -----
 * Initial release. thin-edge.io extension that controls a router digital output.

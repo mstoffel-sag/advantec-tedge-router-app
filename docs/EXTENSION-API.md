@@ -109,4 +109,6 @@ configuration page and can be uninstalled on its own.
 
 See [`modules/relay`](../modules/relay) — a relay-control extension that
 demonstrates both patterns: a daemon subscribing to a local MQTT command topic
-(Pattern A) and a `c8y_Relay` Cumulocity operation (Pattern B).
+(Pattern A) and the Cumulocity relay operations `c8y_Relay` and `c8y_RelayArray`
+(Pattern B, driven from the standard relay widgets, with OPEN/CLOSED state
+reflected back into the managed object).

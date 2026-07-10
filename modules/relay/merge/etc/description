@@ -5,9 +5,11 @@ This is an extension for the thin-edge.io platform Router App. It demonstrates
 the two integration patterns:
 
   * A daemon (relay-agent) subscribes to the local MQTT topic relay/<id>/set and
-    drives the output. Test it with:  tedge mqtt pub relay/main/set on
-  * A Cumulocity custom operation (c8y_Relay) is registered with the thin-edge.io
-    mapper so the relay can be switched from the cloud.
+    drives the output. Test it with:  tedge mqtt pub relay/main/set CLOSED
+  * Cumulocity custom operations c8y_Relay (single, relayState OPEN/CLOSED) and
+    c8y_RelayArray (the RelayArray widget) are registered with the thin-edge.io
+    mapper so the relay can be switched from the cloud; the new state is
+    reflected into the managed object so the relay widgets update.
 
 Install the thin-edge.io platform module first, then this extension. Enable it on
 this module's configuration page. See docs/EXTENSION-API.md.

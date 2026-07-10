@@ -1,18 +1,58 @@
 #!/bin/sh
-# relay-c8y-op — handler for the Cumulocity c8y_Relay custom operation (Pattern B).
+# relay-c8y-op <mode> <state...> — Cumulocity relay operation handler (Pattern B).
 #
-# thin-edge.io's c8y mapper invokes this when a c8y_Relay operation arrives,
-# passing the inbound SmartREST message fields as arguments, e.g.
-#   <templateId>,<deviceId>,<state>
-# (see operations/c8y/c8y_Relay). We take the LAST field as the desired state so
-# the handler is tolerant of the leading template/device fields.
+# Invoked by thin-edge.io's c8y mapper for the operations declared in
+# operations/c8y/{c8y_Relay,c8y_RelayArray}. thin-edge substitutes the operation
+# JSON into the command line (see those files), so this receives the already
+# extracted state values as arguments -- NOT a raw SmartREST CSV message.
+#
+#   relay-c8y-op relay      <relayState>          # c8y_Relay:      OPEN | CLOSED
+#   relay-c8y-op relayarray <"OPEN","CLOSED",...>  # c8y_RelayArray: full desired array
+#
+# For an array, this device drives the element at index $MOD_RELAY_OUTPUT.
+#
+# On success it reflects the new state into the device's managed object so the
+# Cumulocity relay widgets show it. thin-edge maps device *twin* fragments to
+# managed-object fragments, so we publish the c8y_Relay / c8y_RelayArray twin.
+# (Verify twin->inventory mapping on the bundled thin-edge.io version.)
 set -eu
 [ -f /opt/tedge/env ] && . /opt/tedge/env
 
-# thin-edge may pass the whole comma-separated payload as one argument, or the
-# fields as separate arguments. Normalise both into the last non-empty token.
-raw="$*"
-state=$(printf '%s' "$raw" | tr ',' '\n' | sed '/^$/d' | tail -n 1)
-
+MODE="${1:-}"; shift 2>/dev/null || true
+INDEX="${MOD_RELAY_OUTPUT:-0}"
 HERE=$(dirname "$0")
-"$HERE/relay-control" "$state" "${MOD_RELAY_OUTPUT:-0}"
+# Device twin base for the main device (te/<topic-id>/twin/<fragment>).
+TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
+
+reflect() { # reflect <fragment> <json-payload>
+    tedge mqtt pub -r "$TWIN_BASE/$1" "$2" 2>/dev/null || true
+}
+
+case "$MODE" in
+    relay)
+        STATE="${1:-}"
+        [ -n "$STATE" ] || { echo "no relayState given" >&2; exit 2; }
+        "$HERE/relay-control" "$STATE" "$INDEX"
+        # Normalise to the canonical OPEN/CLOSED for the twin.
+        case "$STATE" in CLOSED|closed|on|ON|1|true|TRUE|yes) S=CLOSED ;; *) S=OPEN ;; esac
+        reflect c8y_Relay "{\"relayState\":\"$S\"}"
+        ;;
+    relayarray)
+        # Everything after the mode is the array; tolerate JSON (["OPEN","CLOSED"])
+        # or bare (OPEN,CLOSED) rendering, split across one or several arguments.
+        clean=$(printf '%s' "$*" | tr -d '[]" ' | tr -s ',')
+        [ -n "$clean" ] || { echo "empty c8y_RelayArray" >&2; exit 2; }
+        # awk indexing respects the field count (unlike cut, which passes a
+        # delimiter-less line through intact regardless of -f).
+        state=$(printf '%s' "$clean" | awk -F, -v n="$((INDEX + 1))" \
+            'NR==1{ if (n>=1 && n<=NF) print $n }')
+        [ -n "$state" ] || { echo "no relay at index $INDEX in [$clean]" >&2; exit 2; }
+        "$HERE/relay-control" "$state" "$INDEX"
+        # Reflect the full desired array back (desired == actual on success).
+        json=$(printf '%s' "$clean" | awk -F, '{o="";for(i=1;i<=NF;i++)o=o (i>1?",":"") "\"" $i "\"";print "["o"]"}')
+        reflect c8y_RelayArray "$json"
+        ;;
+    *)
+        echo "usage: relay-c8y-op {relay <state>|relayarray <array>}" >&2
+        exit 2 ;;
+esac

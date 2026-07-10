@@ -1,9 +1,15 @@
 #!/bin/sh
-# relay-control <on|off|1|0|true|false> [output_index]
+# relay-control <state> [output_index]
 #
 # Drives a digital output (relay) on the router. This is the ONE hardware-specific
 # script in the extension; everything else is generic. Adapt the drive_output()
 # function to the ICR-1642's actual I/O interface.
+#
+# <state> accepts the Cumulocity relay values and convenient aliases:
+#   CLOSED | closed | on | 1 | true   -> energise the relay (contact CLOSED)
+#   OPEN   | open   | off| 0 | false  -> de-energise      (contact OPEN)
+# Cumulocity relay operations (c8y_Relay / c8y_RelayArray) use OPEN/CLOSED, where
+# CLOSED means the relay coil is energised and its normally-open contact closes.
 #
 # The output index defaults to $MOD_RELAY_OUTPUT (from the module settings) or 0.
 set -eu
@@ -12,9 +18,9 @@ STATE_ARG="${1:-}"
 INDEX="${2:-${MOD_RELAY_OUTPUT:-0}}"
 
 case "$STATE_ARG" in
-    on|ON|1|true|TRUE|yes)   VAL=1 ;;
-    off|OFF|0|false|FALSE|no) VAL=0 ;;
-    *) echo "usage: relay-control <on|off> [output_index]" >&2; exit 2 ;;
+    CLOSED|closed|on|ON|1|true|TRUE|yes)  VAL=1 ;;
+    OPEN|open|off|OFF|0|false|FALSE|no)   VAL=0 ;;
+    *) echo "usage: relay-control <OPEN|CLOSED|on|off> [output_index]" >&2; exit 2 ;;
 esac
 
 # --- Hardware interface -------------------------------------------------------
@@ -34,4 +40,4 @@ drive_output() {
 }
 
 drive_output "$INDEX" "$VAL"
-echo "relay output ${INDEX} -> $([ "$VAL" = 1 ] && echo ON || echo OFF)"
+echo "relay output ${INDEX} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"
