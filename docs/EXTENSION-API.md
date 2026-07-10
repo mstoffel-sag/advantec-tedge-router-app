@@ -139,8 +139,9 @@ configuration page and can be uninstalled on its own.
 
 ## Worked example
 
-See [`modules/relay`](../modules/relay) — a relay-control extension that
-demonstrates both patterns: a daemon subscribing to a local MQTT command topic
-(Pattern A) and the Cumulocity relay operations `c8y_Relay` and `c8y_RelayArray`
-(Pattern B, driven from the standard relay widgets, with OPEN/CLOSED state
-reflected back into the managed object).
+See [`modules/relay`](../modules/relay) — a relay-control extension built on
+Pattern B + Pattern C: the Cumulocity operations `c8y_Relay` and `c8y_RelayArray`
+(driven from the standard relay widgets, multiple outputs via `MOD_RELAY_OUTPUTS`,
+with OPEN/CLOSED state reflected back into the managed object), plus its settings
+registered for cloud configuration management. For Pattern A (a daemon on the
+local MQTT bus), see the scaffold produced by `scripts/new-extension.sh`.

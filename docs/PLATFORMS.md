@@ -33,8 +33,8 @@ make PLATFORMS="v4"
 `v4` and `v4i` share the aarch64 toolchain and thin-edge.io `arm64` build, and
 both are built by default, so a single `make` produces apps for the ICR-1642 and
 the ICR-44xx. The relay extension uses the same ICR-OS `io` command on both; note
-the ICR-1642 has one binary output (OUT0) while the ICR-44xx has two (OUT0/OUT1),
-selectable via `MOD_RELAY_OUTPUT`.
+the ICR-1642 has one binary output (out0) while the ICR-44xx has two (out0 out1),
+listed in `MOD_RELAY_OUTPUTS`.
 
 ## Notes
 

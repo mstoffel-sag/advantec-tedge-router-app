@@ -1,23 +1,18 @@
 # Relay extension configuration.
 #
 # Copied to /opt/relay/etc/settings on first install; editable from the router
-# web interface (Customization > Router Apps > relay) or directly in the file.
-# Run "/opt/relay/etc/init restart" after a change.
+# web interface (Customization > Router Apps > relay), over SSH, or from
+# Cumulocity (Device Management > Configuration). Changes to the outputs apply on
+# the next relay operation; run "/opt/relay/etc/init restart" to also re-seed the
+# widget state.
 
-# Start the relay agent automatically (1 = enabled, 0 = disabled).
+# Start (seed the widget state) automatically (1 = enabled, 0 = disabled).
 MOD_RELAY_ENABLED=0
 
-# Digital-output index this module controls on the router. The ICR-OS output
-# name is "out<index>": ICR-1642 has one output (0 = OUT0); ICR-44xx has two
-# (0 = OUT0, 1 = OUT1). Also the index into a c8y_RelayArray operation that this
-# device drives.
-MOD_RELAY_OUTPUT=0
-
-# Exact ICR-OS `io` output name, overriding "out<index>" above. Leave empty to
-# derive it from MOD_RELAY_OUTPUT. Set this only for outputs whose name is not
-# out<N> (e.g. a binary output on an expansion port).
-MOD_RELAY_PIN=
-
-# thin-edge command topic identifier for this relay. The agent subscribes to
-# relay/$MOD_RELAY_ID/set and the c8y_Relay operation targets the same id.
-MOD_RELAY_ID=main
+# Outputs this device controls, as an ordered, space-separated list of ICR-OS
+# `io` output names. Array position maps to a c8y_RelayArray element:
+#   out0        -> array index 0
+#   out1        -> array index 1
+# ICR-1642 has one output (out0); ICR-44xx has two (out0 out1). Use exact `io`
+# names for expansion-port outputs, e.g. "out0 out1 xcout0".
+MOD_RELAY_OUTPUTS="out0 out1"

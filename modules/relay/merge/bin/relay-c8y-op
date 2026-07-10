@@ -1,61 +1,61 @@
 #!/bin/sh
-# relay-c8y-op <mode> <state...> — Cumulocity relay operation handler (Pattern B).
+# relay-c8y-op <mode> <state...> — Cumulocity relay operation handler.
 #
 # Invoked by thin-edge.io's c8y mapper for the operations declared in
 # operations/c8y/{c8y_Relay,c8y_RelayArray}. thin-edge substitutes the operation
 # JSON into the command line (see those files), so this receives the already
 # extracted state values as arguments -- NOT a raw SmartREST CSV message.
 #
-#   relay-c8y-op relay      <relayState>          # c8y_Relay:      OPEN | CLOSED
-#   relay-c8y-op relayarray <"OPEN","CLOSED",...>  # c8y_RelayArray: full desired array
+#   relay-c8y-op relay      <relayState>            # c8y_Relay:  drives the FIRST output
+#   relay-c8y-op relayarray <"CLOSED","OPEN",...>   # c8y_RelayArray: drives ALL outputs
 #
-# For an array, this device drives the element at index $MOD_RELAY_OUTPUT.
+# The outputs this device owns are MOD_RELAY_OUTPUTS (ordered, space-separated
+# ICR-OS `io` names). For c8y_RelayArray, array position i drives output i.
 #
-# On success it reflects the new state into the device's managed object so the
-# Cumulocity relay widgets show it. thin-edge maps device *twin* fragments to
-# managed-object fragments, so we publish the c8y_Relay / c8y_RelayArray twin.
-# (Verify twin->inventory mapping on the bundled thin-edge.io version.)
+# On success the new state is reflected into the device's managed object (the
+# c8y_Relay / c8y_RelayArray twin fragment) so the Cumulocity relay widgets show
+# it. (Verify twin->inventory mapping on the bundled thin-edge.io version.)
 set -eu
 [ -f /opt/tedge/env ] && . /opt/tedge/env
-# Sourced by tedge-agent, whose environment does NOT carry the relay module
-# settings, so load them here to honour MOD_RELAY_OUTPUT / MOD_RELAY_PIN.
+# Sourced by tedge-agent, whose environment does NOT carry the relay settings,
+# so load them here to honour MOD_RELAY_OUTPUTS.
 SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
 [ -f "$SETTINGS" ] && . "$SETTINGS"
-export MOD_RELAY_PIN="${MOD_RELAY_PIN:-}"   # let relay-control see the pin override
-
-MODE="${1:-}"; shift 2>/dev/null || true
-INDEX="${MOD_RELAY_OUTPUT:-0}"
+OUTPUTS="${MOD_RELAY_OUTPUTS:-out0}"
 HERE=$(dirname "$0")
-# Device twin base for the main device (te/<topic-id>/twin/<fragment>).
 TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
 
-reflect() { # reflect <fragment> <json-payload>
-    tedge mqtt pub -r "$TWIN_BASE/$1" "$2" 2>/dev/null || true
-}
+canon() { case "$1" in CLOSED|closed|on|ON|1|true|TRUE|yes) echo CLOSED ;; *) echo OPEN ;; esac; }
+reflect() { tedge mqtt pub -r "$TWIN_BASE/$1" "$2" 2>/dev/null || true; }
+
+MODE="${1:-}"; shift 2>/dev/null || true
 
 case "$MODE" in
     relay)
         STATE="${1:-}"
         [ -n "$STATE" ] || { echo "no relayState given" >&2; exit 2; }
-        "$HERE/relay-control" "$STATE" "$INDEX"
-        # Normalise to the canonical OPEN/CLOSED for the twin.
-        case "$STATE" in CLOSED|closed|on|ON|1|true|TRUE|yes) S=CLOSED ;; *) S=OPEN ;; esac
-        reflect c8y_Relay "{\"relayState\":\"$S\"}"
+        first=$(printf '%s\n' $OUTPUTS | head -n 1)
+        "$HERE/relay-control" "$STATE" "$first"
+        reflect c8y_Relay "{\"relayState\":\"$(canon "$STATE")\"}"
         ;;
     relayarray)
-        # Everything after the mode is the array; tolerate JSON (["OPEN","CLOSED"])
-        # or bare (OPEN,CLOSED) rendering, split across one or several arguments.
+        # Tolerate JSON (["CLOSED","OPEN"]) or bare (CLOSED,OPEN) rendering,
+        # possibly split across several arguments.
         clean=$(printf '%s' "$*" | tr -d '[]" ' | tr -s ',')
         [ -n "$clean" ] || { echo "empty c8y_RelayArray" >&2; exit 2; }
-        # awk indexing respects the field count (unlike cut, which passes a
-        # delimiter-less line through intact regardless of -f).
-        state=$(printf '%s' "$clean" | awk -F, -v n="$((INDEX + 1))" \
-            'NR==1{ if (n>=1 && n<=NF) print $n }')
-        [ -n "$state" ] || { echo "no relay at index $INDEX in [$clean]" >&2; exit 2; }
-        "$HERE/relay-control" "$state" "$INDEX"
-        # Reflect the full desired array back (desired == actual on success).
-        json=$(printf '%s' "$clean" | awk -F, '{o="";for(i=1;i<=NF;i++)o=o (i>1?",":"") "\"" $i "\"";print "["o"]"}')
-        reflect c8y_RelayArray "$json"
+        # Drive each configured output from the matching array position.
+        i=1; driven=""
+        for pin in $OUTPUTS; do
+            elem=$(printf '%s' "$clean" | awk -F, -v n="$i" 'NR==1{ if (n<=NF) print $n }')
+            if [ -n "$elem" ]; then
+                "$HERE/relay-control" "$elem" "$pin"
+                driven="${driven:+$driven,}\"$(canon "$elem")\""
+            fi
+            i=$((i + 1))
+        done
+        [ -n "$driven" ] || { echo "no array elements matched MOD_RELAY_OUTPUTS ($OUTPUTS)" >&2; exit 2; }
+        # Reflect what we actually drove (one element per owned output).
+        reflect c8y_RelayArray "[$driven]"
         ;;
     *)
         echo "usage: relay-c8y-op {relay <state>|relayarray <array>}" >&2

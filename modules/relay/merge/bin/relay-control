@@ -1,32 +1,24 @@
 #!/bin/sh
-# relay-control <state> [output_index]
+# relay-control <state> <pin>
 #
-# Drives a digital output (relay) on the router. This is the ONE hardware-specific
-# script in the extension; everything else is generic. Adapt the drive_output()
-# function to the ICR-1642's actual I/O interface.
+# Drives one digital output (relay) on the router. This is the ONE
+# hardware-specific script in the extension; adapt drive_output() to the device.
 #
 # <state> accepts the Cumulocity relay values and convenient aliases:
 #   CLOSED | closed | on | 1 | true   -> energise the relay (contact CLOSED)
 #   OPEN   | open   | off| 0 | false  -> de-energise      (contact OPEN)
-# Cumulocity relay operations (c8y_Relay / c8y_RelayArray) use OPEN/CLOSED, where
-# CLOSED means the relay coil is energised and its normally-open contact closes.
-#
-# The output is selected by (highest precedence first):
-#   $MOD_RELAY_PIN     an exact ICR-OS `io` output name (e.g. out0, out1, or an
-#                      expansion-port pin) -- use this when the name is not outN
-#   [output_index]     positional arg, else
-#   $MOD_RELAY_OUTPUT  the output index from the module settings, else 0
-# The pin name is "out${index}" unless $MOD_RELAY_PIN overrides it.
+# <pin> is the exact ICR-OS `io` output name, e.g. out0, out1, or an
+# expansion-port output. It comes from MOD_RELAY_OUTPUTS (see the settings).
 set -eu
 
 STATE_ARG="${1:-}"
-INDEX="${2:-${MOD_RELAY_OUTPUT:-0}}"
-PIN="${MOD_RELAY_PIN:-out${INDEX}}"
+PIN="${2:-}"
+[ -n "$PIN" ] || { echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2; }
 
 case "$STATE_ARG" in
     CLOSED|closed|on|ON|1|true|TRUE|yes)  VAL=1 ;;
     OPEN|open|off|OFF|0|false|FALSE|no)   VAL=0 ;;
-    *) echo "usage: relay-control <OPEN|CLOSED|on|off> [output_index]" >&2; exit 2 ;;
+    *) echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2 ;;
 esac
 
 # --- Hardware interface -------------------------------------------------------
@@ -35,16 +27,16 @@ esac
 # ICR-44xx has OUT0/OUT1; expansion boards add more). VERIFY the exact `io`
 # output names on your device (CLI application note) and adjust here only.
 drive_output() {
-    pin=$1 idx=$2 val=$3
+    pin=$1 val=$2
     if command -v io >/dev/null 2>&1; then
         io set "$pin" "$val"
-    elif [ -w "/sys/class/gpio/gpio${idx}/value" ]; then
-        echo "$val" > "/sys/class/gpio/gpio${idx}/value"
+    elif [ -w "/sys/class/gpio/${pin}/value" ]; then
+        echo "$val" > "/sys/class/gpio/${pin}/value"
     else
         echo "ERROR: no known relay interface for output '${pin}'" >&2
         return 1
     fi
 }
 
-drive_output "$PIN" "$INDEX" "$VAL"
-echo "relay output ${PIN} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"
+drive_output "$PIN" "$VAL"
+echo "relay ${PIN} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"

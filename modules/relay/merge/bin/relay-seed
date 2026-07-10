@@ -1,0 +1,35 @@
+#!/bin/sh
+# relay-seed — publish the initial c8y_RelayArray managed-object fragment so the
+# Cumulocity RelayArray widget renders one toggle per configured output.
+#
+# The Cumulocity 503 response can only update an existing operation, not create
+# the initial relay state (see the RelayArray widget docs), so the device must
+# seed the fragment itself. This runs once at start (backgrounded by etc/init)
+# and retries until the local broker is reachable, then exits -- it is NOT a
+# long-running daemon. The relay itself is driven by c8y operations (relay-c8y-op).
+set -u
+[ -f /opt/tedge/env ] && . /opt/tedge/env
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+[ -f "$SETTINGS" ] && . "$SETTINGS"
+
+OUTPUTS="${MOD_RELAY_OUTPUTS:-out0}"
+TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
+INITIAL="${MOD_RELAY_INITIAL_STATE:-OPEN}"   # assumed power-on state (not driven)
+RETRIES="${MOD_RELAY_SEED_RETRIES:-30}"
+
+# Build ["OPEN","OPEN",...] with one element per configured output.
+json=""; for pin in $OUTPUTS; do json="${json:+$json,}\"$INITIAL\""; done
+[ -n "$json" ] || exit 0
+json="[$json]"
+
+n=0
+while [ "$n" -lt "$RETRIES" ]; do
+    if tedge mqtt pub -r "$TWIN_BASE/c8y_RelayArray" "$json" 2>/dev/null; then
+        echo "$(date '+%F %T') relay-seed: published c8y_RelayArray=$json"
+        exit 0
+    fi
+    n=$((n + 1))
+    sleep 2
+done
+echo "$(date '+%F %T') relay-seed: broker unreachable after $RETRIES tries; giving up (first operation will seed it)"
+exit 0

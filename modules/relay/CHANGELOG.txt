@@ -1,6 +1,20 @@
 relay Router App - Changelog
 ============================
 
+1.3.0
+-----
+* Multi-relay support. MOD_RELAY_OUTPUTS lists the outputs this device controls
+  (e.g. "out0 out1" on ICR-44xx); a c8y_RelayArray operation drives every
+  configured output from its matching array position.
+* Cloud-only design: removed the local MQTT command topic and the relay-agent
+  daemon. Relays are switched by Cumulocity operations; there is no persistent
+  process. Config changes apply on the next operation (relay-c8y-op re-reads
+  settings), so the live-reload watcher is no longer needed.
+* Seed the c8y_RelayArray managed-object fragment on start (relay-seed, with
+  retry) so the RelayArray widget renders one toggle per output.
+* relay-control now takes an exact `io` output name; MOD_RELAY_OUTPUT and
+  MOD_RELAY_PIN are replaced by MOD_RELAY_OUTPUTS.
+
 1.2.0
 -----
 * Register /opt/relay/etc/settings with Cumulocity configuration management, so
