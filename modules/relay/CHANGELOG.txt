@@ -1,6 +1,16 @@
 relay Router App - Changelog
 ============================
 
+1.0.2
+-----
+* Fix: actually drive the relay output. relay-control detected the ICR-OS `io`
+  utility with `command -v io`, but the ICR-OS shell (abox) has no `command`
+  builtin -- `command -v` fails with "command: not found", so detection always
+  failed and the operation reported "no known relay interface for output 'out0'"
+  even though /usr/bin/io is present. Detect `io` by its executable path instead
+  (with a `type` fallback). Verified on an ICR-4400: c8y_Relay now drives out0
+  (CLOSED -> io=1, OPEN -> io=0) and the operation completes successfully.
+
 1.0.1
 -----
 * Fix: the c8y_Relay / c8y_RelayArray operation handlers now use

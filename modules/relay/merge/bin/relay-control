@@ -26,9 +26,17 @@ esac
 # `io set out0 1`. This works across ICR families (ICR-1642 has one output OUT0;
 # ICR-44xx has OUT0/OUT1; expansion boards add more). VERIFY the exact `io`
 # output names on your device (CLI application note) and adjust here only.
+#
+# NOTE: detect `io` by its executable path, NOT `command -v`. The ICR-OS shell
+# (abox) has no `command` builtin -- `command -v io` errors with
+# "command: not found", so it wrongly reported "no known relay interface" even
+# though /usr/bin/io is present. Verified on an ICR-4400.
+io_available() {
+    [ -x /usr/bin/io ] || [ -x /bin/io ] || [ -x /sbin/io ] || type io >/dev/null 2>&1
+}
 drive_output() {
     pin=$1 val=$2
-    if command -v io >/dev/null 2>&1; then
+    if io_available; then
         io set "$pin" "$val"
     elif [ -w "/sys/class/gpio/${pin}/value" ]; then
         echo "$val" > "/sys/class/gpio/${pin}/value"
