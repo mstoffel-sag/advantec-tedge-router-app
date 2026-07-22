@@ -25,6 +25,19 @@ LOGDIR=/var/log/tedge
 mkdir -p "$LOGDIR" /tmp/tedge 2>/dev/null || true
 MAPPER_LOG="$LOGDIR/tedge-mapper-c8y.log"
 
+# Persistent runtime state that MUST survive a module reinstall/upgrade.
+# ICR-OS replaces /opt/tedge wholesale on every Router App upgrade, so the device
+# certificate cannot live under it -- otherwise every update wipes the cert and,
+# with c8y-ca (the cert exists only on the device), the device drops off
+# Cumulocity and needs re-registration (a truck roll). /opt is a persistent
+# partition; a sibling dir OUTSIDE the module survives an upgrade because the
+# boot launcher /etc/init.d/module only ever descends into /opt/<dir>/etc/init
+# (and its `list` skips hyphenated names), so /opt/tedge-data is invisible to the
+# module system and untouched when the tedge module is removed/replaced.
+# See docs/SELF-UPDATE-ROLLBACK.md (sec 1).
+PERSIST_DIR=/opt/tedge-data
+CERT_DIR=$PERSIST_DIR/device-certs
+
 log() { /usr/bin/logger -t "$MOD_NAME" "$1" 2>/dev/null; echo "$1"; }
 
 # ---------------------------------------------------------------------------
@@ -57,7 +70,33 @@ resolve_device_id() {
     fi
 }
 
+# Anchor the device certificate/key on the persistent store so a module
+# reinstall/upgrade never loses it. Idempotent; runs before every provisioning.
+anchor_persistent_certs() {
+    mkdir -p "$CERT_DIR" 2>/dev/null || true
+    chmod 700 "$CERT_DIR" 2>/dev/null || true
+
+    # One-time migration from the older in-module default location. Only helps
+    # when the old cert still exists (e.g. an in-place update); a full ICR-OS
+    # reinstall wipes /opt/tedge first, which is exactly why we relocate.
+    old_dir=$MOD_DIR/device-certs
+    if [ -f "$old_dir/tedge-certificate.pem" ] && [ ! -f "$CERT_DIR/tedge-certificate.pem" ]; then
+        cp -p "$old_dir"/tedge-*.pem "$CERT_DIR"/ 2>/dev/null || true
+        log "Migrated device certificate to persistent store $CERT_DIR"
+    fi
+
+    # Point tedge at the persistent cert/key (idempotent -- only write on change).
+    [ "$(tedge config get device.cert_path 2>/dev/null)" = "$CERT_DIR/tedge-certificate.pem" ] \
+        || tedge config set device.cert_path "$CERT_DIR/tedge-certificate.pem"
+    [ "$(tedge config get device.key_path 2>/dev/null)" = "$CERT_DIR/tedge-private-key.pem" ] \
+        || tedge config set device.key_path "$CERT_DIR/tedge-private-key.pem"
+}
+
 configure() {
+    # Keep the device certificate on persistent storage (before the cert-exists
+    # checks below, so an upgraded device finds its cert and skips re-download).
+    anchor_persistent_certs
+
     # Cumulocity URL
     if [ -n "$MOD_TEDGE_C8Y_URL" ]; then
         url=$(normalize_url "$MOD_TEDGE_C8Y_URL")

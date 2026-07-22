@@ -1,6 +1,27 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.3
+-----
+* Fix: keep the device certificate across module reinstalls/upgrades. ICR-OS
+  replaces /opt/tedge wholesale on every Router App upgrade, which wiped
+  /opt/tedge/device-certs -- and with c8y-ca the certificate exists only on the
+  device, so each upgrade dropped the device from Cumulocity and required a
+  manual re-registration (a truck roll).
+    - The device certificate/key now live in /opt/tedge-data/device-certs, a
+      directory OUTSIDE the module tree on the persistent /opt partition. The
+      boot launcher (/etc/init.d/module) only descends into /opt/<dir>/etc/init,
+      so this sibling directory is invisible to the module system and survives a
+      tedge reinstall.
+    - etc/init points device.cert_path / device.key_path there on every start
+      (before the cert-exists check, so an upgraded device finds its cert and
+      skips re-download), migrating an existing in-module cert if present.
+    - etc/install creates the store; etc/uninstall intentionally leaves it in
+      place (an upgrade runs uninstall first, so removing it would defeat the
+      purpose).
+  Verified on an ICR-4400: cert issued into the persistent store, mapper
+  reconnects with a valid JWT. See docs/SELF-UPDATE-ROLLBACK.md (sec 1).
+
 1.0.2
 -----
 * Align service control with the Advantech ICR-OS init system. The upstream

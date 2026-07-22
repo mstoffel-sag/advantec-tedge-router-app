@@ -13,6 +13,12 @@ if [ -h /usr/bin/tedge ]; then
     esac
 fi
 
+# NOTE: we deliberately do NOT remove /opt/tedge-data (the persistent device
+# certificate store). An ICR-OS upgrade runs this uninstall before reinstalling,
+# so deleting it here would defeat its whole purpose (surviving upgrades) and
+# force a Cumulocity re-registration every time. A stale store is harmless; if an
+# operator truly wants to purge the device identity they can remove it manually.
+
 # Remove the /etc/init.d service links (only the ones pointing back into us).
 for l in /etc/init.d/S99mosquitto /etc/init.d/S99tedge-mapper-c8y /etc/init.d/S99tedge-agent; do
     [ -h "$l" ] || continue

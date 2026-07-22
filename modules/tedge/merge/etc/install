@@ -27,6 +27,14 @@ move_if_missing system.default.toml system.toml
 # Runtime directories (log/tmp/data live on volatile storage).
 mkdir -p /var/log/tedge /tmp/tedge 2>/dev/null || true
 
+# Persistent store for the device certificate. It lives OUTSIDE the module tree
+# (/opt/tedge-data, on the persistent /opt partition) so an ICR-OS module
+# reinstall/upgrade -- which replaces /opt/tedge wholesale -- does not wipe the
+# cert and force a Cumulocity re-registration. etc/init points device.cert_path
+# here on every start. See docs/SELF-UPDATE-ROLLBACK.md.
+mkdir -p /opt/tedge-data/device-certs 2>/dev/null || true
+chmod 700 /opt/tedge-data/device-certs 2>/dev/null || true
+
 # Make sure the bundled scripts are executable.
 chmod +x "$MOD_DIR/bin/"* "$MOD_DIR/etc/init" 2>/dev/null || true
 
