@@ -5,10 +5,17 @@ relay Router App - Changelog
 -----
 * Fix: the c8y_Relay / c8y_RelayArray operation handlers now use
   topic = "c8y/devicecontrol/notifications" (was "c8y/s/ds"). The bundled
-  thin-edge 2.0.1 flows mapper dispatches on_fragment handlers only on the JSON
-  operation topic; paired with c8y/s/ds the operations never reached the relay
-  script. Verified against the same mapper behaviour that broke Cloud Remote
-  Access (see the thin-edge.io tedge module 1.0.2).
+  thin-edge 2.0.1 flows mapper dispatches custom exec-operation (on_fragment)
+  handlers only on the JSON operation topic; paired with c8y/s/ds the operations
+  never reached the relay script. (Built-in mapper operations such as
+  remote_access are unaffected -- they use a native dispatch path and work with
+  the stock s/ds declaration.)
+* Fix: etc/install and etc/uninstall now source /opt/tedge/env before calling
+  the tedge CLI. thin-edge.io is relocated to /opt/tedge but the tedge binary's
+  compiled-in default config dir is /etc/tedge; without the env, TEDGE_CONFIG_DIR
+  is unset and `tedge reconnect c8y` read the absent /etc/tedge and silently
+  failed, so the relay operations were never announced to Cumulocity after
+  install (they would only appear after the next mapper restart).
 
 1.0.0
 -----

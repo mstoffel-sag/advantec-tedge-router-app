@@ -12,6 +12,13 @@ if [ ! -d "$TEDGE_DIR" ]; then
     exit 1
 fi
 
+# thin-edge.io is relocated to /opt/tedge, but the tedge binary's compiled-in
+# default config dir is /etc/tedge. Source the platform env so PATH finds the
+# tedge CLI and TEDGE_CONFIG_DIR points at /opt/tedge -- otherwise the
+# `tedge reconnect c8y` below reads the (absent) /etc/tedge and silently fails,
+# leaving the relay operations unannounced until the next mapper restart.
+[ -f "$TEDGE_DIR/env" ] && . "$TEDGE_DIR/env"
+
 # Promote settings on first install; never clobber operator changes on upgrade.
 [ -f "$MOD_DIR/etc/settings" ] || cp "$MOD_DIR/etc/defaults" "$MOD_DIR/etc/settings"
 
