@@ -16,3 +16,10 @@ MOD_RELAY_ENABLED=0
 # ICR-1642 has one output (out0); ICR-44xx has two (out0 out1). Use exact `io`
 # names for expansion-port outputs, e.g. "out0 out1 xcout0".
 MOD_RELAY_OUTPUTS="out0 out1"
+
+# Output polarity. On Advantech ICR the digital output is active-low relative to
+# the relay contact: `io set outN 1` OPENS (de-energises) the contact. With
+# MOD_RELAY_ACTIVE_LOW=1 (default) a Cumulocity "CLOSED"/on command energises the
+# contact and "OPEN"/off de-energises it, matching the widget. Set to 0 for
+# hardware where `io set outN 1` closes the contact.
+MOD_RELAY_ACTIVE_LOW=1

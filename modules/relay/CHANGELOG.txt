@@ -9,7 +9,15 @@ relay Router App - Changelog
   failed and the operation reported "no known relay interface for output 'out0'"
   even though /usr/bin/io is present. Detect `io` by its executable path instead
   (with a `type` fallback). Verified on an ICR-4400: c8y_Relay now drives out0
-  (CLOSED -> io=1, OPEN -> io=0) and the operation completes successfully.
+  and the operation completes successfully.
+* Fix: output polarity was inverted on Advantech ICR hardware -- ON/OFF (CLOSED/
+  OPEN) appeared reversed at the relay. The digital output is active-low
+  relative to the relay contact (`io set outN 1` OPENS it), so the level is now
+  inverted by default via the new MOD_RELAY_ACTIVE_LOW setting (default 1):
+  CLOSED energises the contact (io=0), OPEN de-energises it (io=1). Set
+  MOD_RELAY_ACTIVE_LOW=0 for hardware where io=1 closes the contact. The logical
+  state reported to Cumulocity (twin fragment) is unchanged. Verified on an
+  ICR-4400.
 
 1.0.1
 -----

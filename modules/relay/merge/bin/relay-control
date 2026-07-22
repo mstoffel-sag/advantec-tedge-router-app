@@ -11,15 +11,27 @@
 # expansion-port output. It comes from MOD_RELAY_OUTPUTS (see the settings).
 set -eu
 
+# Output polarity comes from the settings (MOD_RELAY_ACTIVE_LOW).
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+[ -f "$SETTINGS" ] && . "$SETTINGS"
+
 STATE_ARG="${1:-}"
 PIN="${2:-}"
 [ -n "$PIN" ] || { echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2; }
 
 case "$STATE_ARG" in
-    CLOSED|closed|on|ON|1|true|TRUE|yes)  VAL=1 ;;
-    OPEN|open|off|OFF|0|false|FALSE|no)   VAL=0 ;;
+    CLOSED|closed|on|ON|1|true|TRUE|yes)  STATE=CLOSED ;;
+    OPEN|open|off|OFF|0|false|FALSE|no)   STATE=OPEN ;;
     *) echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2 ;;
 esac
+
+# Desired contact -> electrical level. On Advantech ICR the digital output is
+# active-low relative to the relay contact (io=1 OPENS/de-energises the contact),
+# so MOD_RELAY_ACTIVE_LOW=1 (the default) inverts the level so CLOSED energises
+# the contact as the Cumulocity widget expects. Set it to 0 on hardware where
+# io=1 closes the contact.
+if [ "$STATE" = CLOSED ]; then VAL=1; else VAL=0; fi
+[ "${MOD_RELAY_ACTIVE_LOW:-1}" = "1" ] && VAL=$((1 - VAL))
 
 # --- Hardware interface -------------------------------------------------------
 # ICR-OS exposes the router's binary outputs via the `io` utility, e.g.
@@ -47,4 +59,4 @@ drive_output() {
 }
 
 drive_output "$PIN" "$VAL"
-echo "relay ${PIN} -> $([ "$VAL" = 1 ] && echo CLOSED || echo OPEN)"
+echo "relay ${PIN} -> ${STATE} (io=${VAL})"
