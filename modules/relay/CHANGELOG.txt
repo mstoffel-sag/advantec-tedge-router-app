@@ -26,6 +26,15 @@ relay Router App - Changelog
   knows how many relays exist and renders a controllable toggle per output.
   Verified on an ICR-4400: ["CLOSED","OPEN"] drives out0/out1 correctly and
   reflects back.
+* Fix: relay operations no longer corrupt the relay state in Cumulocity. The
+  thin-edge c8y mapper feeds an operation command's stdout back into the
+  operation's own c8y_Relay / c8y_RelayArray fragment, which Cumulocity then
+  mirrors onto the device managed object on success. relay-c8y-op's
+  human-readable "relay out0 -> ..." output was thus overwriting c8y_RelayArray
+  with a single string, collapsing the RelayArray widget to one relay (and it
+  stayed collapsed after reload). The handler is now silent on stdout (state is
+  still reported via the twin fragment). Confirmed on an ICR-4400: the device MO
+  keeps a proper 2-element ["CLOSED","OPEN"] array after an operation.
 
 1.0.1
 -----
