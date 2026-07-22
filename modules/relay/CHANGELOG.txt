@@ -18,6 +18,14 @@ relay Router App - Changelog
   MOD_RELAY_ACTIVE_LOW=0 for hardware where io=1 closes the contact. The logical
   state reported to Cumulocity (twin fragment) is unchanged. Verified on an
   ICR-4400.
+* Fix: c8y_RelayArray control. Two problems: (1) the handler parsed the array
+  with `tr`, which is absent on ICR-OS (`tr: not found`), so it errored before
+  driving anything -- reparse with sed instead; (2) the RelayArray widget needs
+  the device to advertise the array: etc/install now seeds the c8y_RelayArray
+  managed-object fragment (one element per MOD_RELAY_OUTPUTS entry) so Cumulocity
+  knows how many relays exist and renders a controllable toggle per output.
+  Verified on an ICR-4400: ["CLOSED","OPEN"] drives out0/out1 correctly and
+  reflects back.
 
 1.0.1
 -----

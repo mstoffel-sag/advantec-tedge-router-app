@@ -40,8 +40,10 @@ case "$MODE" in
         ;;
     relayarray)
         # Tolerate JSON (["CLOSED","OPEN"]) or bare (CLOSED,OPEN) rendering,
-        # possibly split across several arguments.
-        clean=$(printf '%s' "$*" | tr -d '[]" ' | tr -s ',')
+        # possibly split across several arguments. NOTE: `tr` is not present on
+        # ICR-OS, so strip brackets/quotes/spaces and squeeze commas with sed
+        # (the `]` must come first inside the bracket expression).
+        clean=$(printf '%s' "$*" | sed 's/[][" ]//g; s/,,*/,/g; s/^,//; s/,$//')
         [ -n "$clean" ] || { echo "empty c8y_RelayArray" >&2; exit 2; }
         # Drive each configured output from the matching array position.
         i=1; driven=""

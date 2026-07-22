@@ -45,4 +45,15 @@ if [ -x "$TEDGE_DIR/bin/tedge-config-register" ]; then
     "$TEDGE_DIR/bin/tedge-config-register" add relay "$MOD_DIR/etc/settings" relay || true
 fi
 
+# Announce the relay array to Cumulocity: seed the c8y_RelayArray managed-object
+# fragment with one element per configured output, so the Cumulocity RelayArray
+# widget knows HOW MANY relays exist and renders a controllable toggle for each.
+# Without this the widget has no array to drive. The operations above are
+# registered regardless of MOD_RELAY_ENABLED, so the array is announced here too.
+# relay-seed retries until the broker is reachable, then exits (backgrounded).
+if [ -x "$MOD_DIR/bin/relay-seed" ]; then
+    mkdir -p /var/log/relay 2>/dev/null || true
+    "$MOD_DIR/bin/relay-seed" >> /var/log/relay/seed.log 2>&1 &
+fi
+
 exit 0
