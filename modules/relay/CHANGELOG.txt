@@ -1,6 +1,15 @@
 relay Router App - Changelog
 ============================
 
+1.0.1
+-----
+* Fix: the c8y_Relay / c8y_RelayArray operation handlers now use
+  topic = "c8y/devicecontrol/notifications" (was "c8y/s/ds"). The bundled
+  thin-edge 2.0.1 flows mapper dispatches on_fragment handlers only on the JSON
+  operation topic; paired with c8y/s/ds the operations never reached the relay
+  script. Verified against the same mapper behaviour that broke Cloud Remote
+  Access (see the thin-edge.io tedge module 1.0.2).
+
 1.0.0
 -----
 * Initial release. thin-edge.io extension that switches one or more of the

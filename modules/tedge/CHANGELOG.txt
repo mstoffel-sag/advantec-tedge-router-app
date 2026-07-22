@@ -1,6 +1,40 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.2
+-----
+* Align service control with the Advantech ICR-OS init system. The upstream
+  bundle's service scripts assumed start-stop-daemon (services-init.d/S99*) or
+  runit (the default bin/tedgectl) -- neither exists on ICR-OS, so anything that
+  asked thin-edge to control a service (system.toml [init] -> tedgectl:
+  config-update service restarts, `tedge` connect/refresh-bridges, the restart
+  workflow) silently failed.
+    - Rewrote the per-service scripts (services-init.d/S99mosquitto,
+      S99tedge-mapper-c8y, S99tedge-agent) to be device-native: background the
+      daemon and track/stop it with pidof + kill, the same style as other
+      Router Apps (e.g. /opt/wadmp_client/etc/init). No start-stop-daemon.
+    - tedgectl is NOT modified: the bundle already ships a SysV init.d variant
+      (services-init.d/tedgectl); the build simply selects it as the active
+      bin/tedgectl (instead of the runit default), and etc/install symlinks the
+      S99 scripts into /etc/init.d so that SysV tedgectl resolves them.
+    - etc/init now uses the same per-service scripts for boot start/stop/status
+      (single implementation shared by boot, tedge, and direct use). This also
+      fixes the false "mosquitto: stopped" status (pid tracking now via pidof).
+  Verified on an ICR-4400: `tedgectl restart tedge-mapper-c8y` cycles and
+  reconnects the mapper, `tedge refresh-bridges` starts mosquitto through the
+  aligned chain, and status is truthful.
+
+1.0.1
+-----
+* Fix: self-heal the Cumulocity c8y-ca "first-connect race". On a freshly
+  auto-registered device the built-in MQTT bridge could subscribe to the cloud
+  operation/token topics before Cumulocity finished provisioning the device,
+  get those subscriptions refused (SubAck Failure), and never retry -- leaving
+  the mapper connected but unable to receive operations or a JWT token (REST
+  calls then failed with 502). The service now watches the mapper log after
+  start and restarts the mapper if it sees the refusal, so the device recovers
+  on its own instead of needing a manual restart.
+
 1.0.0
 -----
 * Initial release.

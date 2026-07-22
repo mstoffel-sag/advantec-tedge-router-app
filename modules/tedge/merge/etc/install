@@ -40,4 +40,16 @@ chmod +x "$MOD_DIR/bin/"* "$MOD_DIR/etc/init" 2>/dev/null || true
 # bin/tedge-config-register helper (chmod'd above) so extension modules can add
 # their own files to that list without clobbering it (see docs/EXTENSION-API.md).
 
+# ---------------------------------------------------------------------------
+# Wire the per-service scripts into /etc/init.d so thin-edge.io's own SysV
+# tedgectl (which system.toml invokes for service control) resolves them by
+# name for every action -- not only after an `enable`. These links are NOT
+# added to the boot sequence (/etc/rc.d/rc.start); at boot the module launcher
+# /etc/init.d/module starts us via etc/init. They exist purely so tedgectl can
+# find the scripts. The scripts themselves are device-native (pidof + kill).
+[ -d "$PREFIX/etc/init.d" ] || mkdir -p "$PREFIX/etc/init.d"
+for s in mosquitto tedge-mapper-c8y tedge-agent; do
+    ln -sf "$MOD_DIR/services-init.d/S99$s" "$PREFIX/etc/init.d/S99$s"
+done
+
 exit 0

@@ -20,52 +20,27 @@ MOD_SETTINGS=$MOD_DIR/etc/settings
 [ -f "$MOD_SETTINGS" ] || cp "$MOD_DEFAULTS" "$MOD_SETTINGS"
 . "$MOD_SETTINGS"
 
-# Volatile locations for pid files and logs.
-if   [ -d /var/run ]; then PIDDIR=/var/run
-elif [ -d /run ];     then PIDDIR=/run
-else                       PIDDIR=/tmp
-fi
-LOGDIR=$(tedge config get logs.path 2>/dev/null || echo /var/log/tedge)
-[ -n "$LOGDIR" ] || LOGDIR=/var/log/tedge
+# Log location (the per-service scripts log under /var/log/tedge).
+LOGDIR=/var/log/tedge
 mkdir -p "$LOGDIR" /tmp/tedge 2>/dev/null || true
+MAPPER_LOG="$LOGDIR/tedge-mapper-c8y.log"
 
 log() { /usr/bin/logger -t "$MOD_NAME" "$1" 2>/dev/null; echo "$1"; }
 
 # ---------------------------------------------------------------------------
-# Daemon supervision helpers
+# Service supervision
+#
+# The three daemons are controlled by the per-service scripts under
+# services-init.d/ (device-native: pidof + kill, no start-stop-daemon and no
+# runit -- neither exists on ICR-OS). Those scripts are the SINGLE start/stop
+# implementation, shared by boot (this script), by thin-edge via bin/tedgectl +
+# system.toml, and by direct invocation. Listed broker-first for start; stop
+# walks them in reverse.
 # ---------------------------------------------------------------------------
-pidfile() { echo "$PIDDIR/$MOD_NAME-$1.pid"; }
+SVC_DIR="$MOD_DIR/services-init.d"
+SERVICES="mosquitto tedge-mapper-c8y tedge-agent"
 
-is_running() {
-    pf=$(pidfile "$1")
-    [ -f "$pf" ] || return 1
-    kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null
-}
-
-# start_daemon <label> <command...>
-start_daemon() {
-    label=$1; shift
-    if is_running "$label"; then
-        echo "  $label already running"
-        return 0
-    fi
-    "$@" >> "$LOGDIR/$label.log" 2>&1 &
-    echo $! > "$(pidfile "$label")"
-    echo "  started $label (pid $!)"
-}
-
-# stop_daemon <label> <pkill-pattern>
-stop_daemon() {
-    label=$1; pattern=$2
-    pf=$(pidfile "$label")
-    if [ -f "$pf" ]; then
-        kill "$(cat "$pf" 2>/dev/null)" 2>/dev/null
-        rm -f "$pf"
-    fi
-    # Fallback in case the pid file was lost.
-    pkill -f "$pattern" 2>/dev/null || true
-    echo "  stopped $label"
-}
+svc() { [ -x "$SVC_DIR/S99$2" ] && "$SVC_DIR/S99$2" "$1"; }   # svc <action> <name>
 
 # ---------------------------------------------------------------------------
 # Provisioning (idempotent, runs on every start; network steps only when needed)
@@ -145,6 +120,50 @@ EOT
     tedge refresh-bridges >/dev/null 2>&1 || true
 }
 
+# Work around a Cumulocity c8y-ca first-connect race. On a freshly
+# auto-registered device the built-in MQTT bridge sends its cloud SUBSCRIBEs
+# (s/ds operations, s/dat token, devicecontrol/notifications, ...) as soon as
+# it connects -- which can happen before Cumulocity has finished provisioning
+# the device's authorization. Those subscriptions are then refused
+# ("SubAck ... Failure") and the bridge does NOT retry them, so the mapper sits
+# connected but deaf: no inbound operations and no JWT token (every REST call
+# then fails 502). A fresh mapper connect once provisioning has completed clears
+# it, so after starting we watch the log briefly and bounce the mapper if we see
+# the refusal. Healthy connections return quickly; this only adds latency (and
+# restarts) on a genuinely racing first boot.
+heal_mapper_subscriptions() {
+    max_restarts=3
+    restarts=0
+    mark=$(wc -l < "$MAPPER_LOG" 2>/dev/null || echo 0)
+    waited=0
+    while [ "$waited" -lt 90 ]; do
+        sleep 3
+        waited=$((waited + 3))
+        new=$(awk -v n="$mark" 'NR>n' "$MAPPER_LOG" 2>/dev/null)
+
+        if echo "$new" | grep -Eq "\[cloud\].*SubAck.*Failure"; then
+            if [ "$restarts" -ge "$max_restarts" ]; then
+                log "cloud bridge still refusing subscriptions after $restarts restarts; will retry on next start"
+                return 0
+            fi
+            restarts=$((restarts + 1))
+            log "cloud bridge subscriptions refused (c8y provisioning not ready); restarting mapper ($restarts/$max_restarts)"
+            svc restart tedge-mapper-c8y
+            mark=$(wc -l < "$MAPPER_LOG" 2>/dev/null || echo 0)
+            waited=0
+            continue
+        fi
+
+        # A received JWT token proves the s/dat subscription was accepted, which
+        # only happens once the operational topics are authorized too.
+        if echo "$new" | grep -q "JWT token received"; then
+            log "cloud bridge healthy (operations and token channel up)"
+            return 0
+        fi
+    done
+    return 0
+}
+
 start_tedge() {
     log "Starting $MOD_NAME"
 
@@ -155,25 +174,26 @@ start_tedge() {
     configure || { log "Provisioning failed; not starting daemons"; return 1; }
 
     # Local MQTT broker, then the c8y mapper (built-in TLS bridge to the cloud)
-    # and the device management agent.
-    start_daemon mosquitto        "$BIN/mosquitto" -c "$MOD_DIR/mosquitto.conf"
-    start_daemon tedge-mapper-c8y "$BIN/tedge-mapper" c8y
-    start_daemon tedge-agent      "$BIN/tedge-agent"
+    # and the device management agent -- via the shared per-service scripts.
+    for s in $SERVICES; do svc start "$s"; done
 
     log "$MOD_NAME started"
+
+    # Self-heal the c8y-ca first-connect subscription race (see the function).
+    heal_mapper_subscriptions
 }
 
 stop_tedge() {
     log "Stopping $MOD_NAME"
-    stop_daemon tedge-agent      "$BIN/tedge-agent"
-    stop_daemon tedge-mapper-c8y "$BIN/tedge-mapper c8y"
-    stop_daemon mosquitto        "$BIN/mosquitto"
+    svc stop tedge-agent
+    svc stop tedge-mapper-c8y
+    svc stop mosquitto
 }
 
 status_tedge() {
     rc=0
-    for s in mosquitto tedge-mapper-c8y tedge-agent; do
-        if is_running "$s"; then
+    for s in $SERVICES; do
+        if "$SVC_DIR/S99$s" status >/dev/null 2>&1; then
             echo "  $s: running"
         else
             echo "  $s: stopped"
