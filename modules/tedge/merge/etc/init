@@ -163,8 +163,13 @@ EOT
                 [ -n "$otp" ] || otp=$(printf "%s" "$dev_id" | md5sum | awk '{print $1}')
                 c8y_host=$(tedge config get c8y.url 2>/dev/null)
                 if [ -n "$c8y_host" ]; then
-                    log "Register this device in Cumulocity:"
-                    log "  https://$c8y_host/apps/devicemanagement/index.html#/deviceregistration?externalId=$dev_id&one-time-password=$otp"
+                    # Do NOT log the one-time password: log() writes to syslog
+                    # (/var/log/messages), which is itself retrievable from the
+                    # cloud via the log plugin. Log the external id only and tell
+                    # the operator where the OTP comes from.
+                    log "Register this device in Cumulocity (external id: $dev_id):"
+                    log "  https://$c8y_host/apps/devicemanagement/index.html#/deviceregistration?externalId=$dev_id"
+                    log "  Enter the one-time password from MOD_TEDGE_OTP (default: md5 of the device id); it is not logged."
                 fi
                 # Non-fatal: if the device is not registered / no network yet,
                 # this simply retries on the next start.
@@ -224,6 +229,76 @@ heal_mapper_subscriptions() {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# System metrics poller (optional, enabled by default)
+#
+# metrics-monitor publishes router metrics (CPU load, memory, disk, board
+# temperature/voltage) to the local bus as Cumulocity measurements. There is no
+# separate Router App: the poller ships with the platform module and is started
+# here when configured. Its config lives in etc/metrics (registered with the
+# configuration plugin; MOD_METRICS_* -- no secrets), read fresh here so an
+# operator can enable/disable it without editing the main settings file.
+# ---------------------------------------------------------------------------
+METRICS_CONF="$MOD_DIR/etc/metrics"
+METRICS_PROC=metrics-monitor   # the poller's process name (comm); pidof matches it
+
+metrics_enabled() {
+    [ -f "$METRICS_CONF" ] || return 1
+    enabled=$(. "$METRICS_CONF"; echo "${MOD_METRICS_ENABLED:-1}")
+    [ "$enabled" = "1" ]
+}
+
+metrics_running() { pidof "$METRICS_PROC" >/dev/null 2>&1; }
+
+# Device-native stop: ICR-OS busybox has no pkill/start-stop-daemon, so match by
+# comm with pidof and kill (the same pattern as the S99 service scripts).
+stop_metrics() {
+    metrics_running || return 0
+    kill $(pidof "$METRICS_PROC") 2>/dev/null
+}
+
+start_metrics() {
+    metrics_enabled || { log "metrics poller disabled (set MOD_METRICS_ENABLED=1 in etc/metrics)"; return 0; }
+    stop_metrics   # never leave two pollers running after a restart
+    "$BIN/metrics-monitor" >> "$LOGDIR/metrics-monitor.log" 2>&1 &
+    log "metrics poller started"
+}
+
+# ---------------------------------------------------------------------------
+# Relay (digital output) control (optional, enabled by default)
+#
+# Drives the router's digital outputs from Cumulocity via the c8y_Relay /
+# c8y_RelayArray operations (handled by bin/relay-c8y-op, declared in
+# operations/c8y/). relay-seed publishes the initial widget state (retries then
+# exits); relay-monitor reflects device-side output changes back to Cumulocity.
+# Config in etc/relay (registered with the configuration plugin; no secrets).
+# Same device-native stop as the metrics poller -- pidof + kill, never pkill.
+# ---------------------------------------------------------------------------
+RELAY_CONF="$MOD_DIR/etc/relay"
+
+relay_enabled() {
+    [ -f "$RELAY_CONF" ] || return 1
+    enabled=$(. "$RELAY_CONF"; echo "${MOD_RELAY_ENABLED:-0}")
+    [ "$enabled" = "1" ]
+}
+
+relay_running() { pidof relay-monitor >/dev/null 2>&1; }
+
+stop_relay() {
+    for p in relay-monitor relay-seed; do
+        pidof "$p" >/dev/null 2>&1 && kill $(pidof "$p") 2>/dev/null
+    done
+}
+
+start_relay() {
+    relay_enabled || { log "relay disabled (set MOD_RELAY_ENABLED=1 in etc/relay)"; return 0; }
+    stop_relay   # never leave two monitors/seeders after a restart
+    "$BIN/relay-seed"    >> "$LOGDIR/relay-seed.log" 2>&1 &
+    "$BIN/relay-monitor" >> "$LOGDIR/relay-monitor.log" 2>&1 &
+    outs=$(. "$RELAY_CONF"; echo "${MOD_RELAY_OUTPUTS:-out0}")
+    log "relay started (outputs: $outs)"
+}
+
 start_tedge() {
     log "Starting $MOD_NAME"
 
@@ -253,6 +328,12 @@ start_tedge() {
     # Device management agent.
     svc start tedge-agent
 
+    # System metrics poller (enabled by default; gated by etc/metrics).
+    start_metrics
+
+    # Relay control: seed the widget + start the reflector (gated by etc/relay).
+    start_relay
+
     log "$MOD_NAME started"
 
     # Self-heal the c8y-ca first-connect subscription race (see the function).
@@ -261,6 +342,8 @@ start_tedge() {
 
 stop_tedge() {
     log "Stopping $MOD_NAME"
+    stop_relay
+    stop_metrics
     svc stop tedge-agent
     svc stop tedge-mapper-c8y
     svc stop mosquitto
@@ -276,6 +359,16 @@ status_tedge() {
             rc=1
         fi
     done
+    if metrics_enabled; then
+        if metrics_running; then echo "  metrics-monitor: running"; else echo "  metrics-monitor: stopped"; fi
+    else
+        echo "  metrics-monitor: disabled"
+    fi
+    if relay_enabled; then
+        if relay_running; then echo "  relay-monitor: running"; else echo "  relay-monitor: stopped"; fi
+    else
+        echo "  relay-monitor: disabled"
+    fi
     return $rc
 }
 

@@ -1,6 +1,65 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.14
+------
+* Security: the one-time password (OTP) is no longer exposed.
+  - The web UI "One-time password" field was a plain text input (visible on
+    screen and in the page source); it is now a masked password input like the
+    device/c8y password fields.
+  - etc/init logged the full Cumulocity device-registration URL including
+    `one-time-password=<otp>` via log(), which writes to syslog
+    (/var/log/messages) -- itself retrievable from the cloud through the log
+    plugin. It now logs the external id and the registration URL WITHOUT the OTP,
+    and points the operator at MOD_TEDGE_OTP (default md5 of the device id).
+
+1.0.13
+------
+* Relay control folded into the platform module (the standalone `relay`
+  extension Router App is removed). The c8y_Relay / c8y_RelayArray operations
+  now ship natively in operations/c8y/ (no symlink), their handler and the
+  relay-monitor reflector live in bin/relay-*, and etc/init starts/stops them
+  (start_relay/stop_relay, shown in status as relay-monitor). Configuration is a
+  new file etc/relay (MOD_RELAY_ENABLED / _POLL_INTERVAL / _OUTPUTS / _ACTIVE_LOW,
+  no secrets), registered with the configuration plugin as the "relay" config
+  type; enabled by default. Relay logs move to /var/log/tedge/relay-*.log.
+* Fix: service stop/restart-dedup used `pkill -f`, which is a silent no-op on
+  ICR-OS (no pkill/pgrep in busybox) -- backgrounded pollers were never stopped
+  and restarts left duplicate processes. The metrics and relay start/stop now use
+  the device-native `kill $(pidof <name>)` pattern (as the S99 service scripts
+  do). Verified on an ICR-4400: a full module restart leaves exactly one poller.
+
+1.0.12
+------
+* System metrics: the platform module now ships a built-in metrics poller
+  (bin/metrics-monitor) instead of a separate Router App. When enabled (the
+  default), etc/init starts it after the agent and stops it on shutdown; it
+  publishes router metrics (CPU load, memory, disk free space, board
+  temperature/supply voltage) to te/device/main///m/<type>, which the c8y mapper
+  forwards to Cumulocity as measurements. Series groups: cpu, memory, disk,
+  environment; unavailable series are omitted. Configuration is a new file
+  etc/metrics (MOD_METRICS_ENABLED / _POLL_INTERVAL / _SERIES / _TYPE, no
+  secrets), registered with the configuration plugin as the "metrics" config
+  type so it can be edited from Cumulocity. MOD_METRICS_SERIES selects which
+  groups are transmitted. Verified on an ICR-4400: enabled by default, poller
+  starts with the module, series selection honoured, and measurements arrive in
+  Cumulocity.
+
+1.0.11
+------
+* Router and tedge service logs are now retrievable from Cumulocity (Device
+  Management > Logs, the c8y_LogfileRequest operation). The bundled
+  tedge-log-plugin.toml only registered thin-edge.io's own workflow/software-
+  management logs; etc/install now also registers the router system log
+  (/var/log/messages*, type "system") and the tedge service logs (mosquitto,
+  tedge-agent, tedge-mapper). Ships a new bin/tedge-log-register helper -- a
+  mirror of tedge-config-register (add <marker> <path> <type> / remove <marker>,
+  idempotent marked [[files]] blocks) -- so extension modules can register their
+  own log types without clobbering the shipped entries (see docs/EXTENSION-API.md,
+  Pattern D). Verified on an ICR-4400: all six types list, tedge-agent re-
+  announces c8y_SupportedLogs on the toml change, and a c8y_LogfileRequest for
+  "system" uploaded /var/log/messages* to Cumulocity (content matched on-disk).
+
 1.0.10
 ------
 * Fix: the web UI showed an empty/timed-out page after clicking Apply. The CGI

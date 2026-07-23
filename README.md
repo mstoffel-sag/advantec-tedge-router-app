@@ -132,8 +132,11 @@ make PLATFORMS="v4i"                                 # → images/<name>/<name>.
 
 The recursive build discovers modules from the matrix in `modules/Rules.mk`, so
 a new extension needs no Makefile edits. See [docs/EXTENSION-API.md](docs/EXTENSION-API.md)
-for the platform/extension contract and [modules/relay](modules/relay) for a
-worked example that switches a relay from a Cumulocity operation and from the
+for the platform/extension contract. The platform's own built-in relay and
+metrics features (their scripts live under
+[modules/tedge/merge/bin](modules/tedge/merge/bin) as `relay-*` and
+`metrics-monitor`) are reference implementations of the same patterns — a
+Cumulocity operation, cloud-managed configuration, and a participant on the
 local MQTT bus.
 
 ## Installing on the router

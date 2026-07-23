@@ -1,15 +1,19 @@
-# Relay extension configuration.
+# thin-edge.io Router App -- relay (digital output) configuration.
 #
-# Copied to /opt/relay/etc/settings on first install; editable from the router
-# web interface (Customization > Router Apps > relay), over SSH, or from
-# Cumulocity (Device Management > Configuration). Changes to the outputs apply on
-# the next relay operation; run "/opt/relay/etc/init restart" to also re-seed the
-# widget state.
+# Controls the built-in relay feature: the Cumulocity operations c8y_Relay /
+# c8y_RelayArray (handled by bin/relay-c8y-op) and the relay-monitor poller that
+# reflects device-side output changes back to Cumulocity. Started by the module's
+# etc/init when MOD_RELAY_ENABLED=1. This file is registered with thin-edge.io's
+# configuration plugin as the "relay" configuration type, so it can be edited
+# from Cumulocity (Device Management > Configuration) as well as over SSH. It
+# contains no secrets.
+#
+# Apply changes with:  /opt/tedge/etc/init restart
 
 # Enable the relay integration (1 = enabled, 0 = disabled). When enabled, boot
 # seeds the widget state and starts relay-monitor, which reflects device-side
 # output changes back to Cumulocity. Cumulocity operations drive the outputs
-# regardless of this flag; it gates the boot-time seed and the monitor daemon.
+# regardless of this flag; it gates the boot-time seed and the monitor.
 MOD_RELAY_ENABLED=1
 
 # How often (seconds) relay-monitor polls the outputs to detect device-side

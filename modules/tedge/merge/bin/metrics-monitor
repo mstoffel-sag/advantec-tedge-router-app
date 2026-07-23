@@ -1,0 +1,96 @@
+#!/bin/sh
+# metrics-monitor -- publish router system metrics to thin-edge.io as Cumulocity
+# measurements.
+#
+# The thin-edge.io standalone bundle ships no collectd / tedge-mapper-collectd,
+# so nothing samples the host. This lightweight poller reads the metrics ICR-OS
+# already exposes (/proc for CPU load + memory, the `status sys` CLI for board
+# temperature, supply voltage and free space) and publishes one thin-edge
+# measurement per interval to
+#
+#     te/device/main///m/<type>
+#
+# which the c8y mapper forwards to Cumulocity. Started/stopped by the tedge
+# module's etc/init (start_metrics/stop_metrics) when MOD_METRICS_ENABLED=1.
+#
+# Configuration lives in /opt/tedge/etc/metrics (registered with thin-edge.io's
+# configuration plugin as the "metrics" config type, so it is editable from the
+# cloud). It selects which series groups to transmit (MOD_METRICS_SERIES), the
+# interval (MOD_METRICS_POLL_INTERVAL) and the measurement type. Each selected
+# group becomes its own Cumulocity series group (chartable): cpu, memory, disk,
+# environment. Series with no value on this hardware (e.g. no supply-voltage
+# sensor) are omitted.
+#
+# Busybox notes: `tr` is absent (use sed/awk); the `status sys` temperature line
+# carries a non-ASCII degree glyph, so the value is extracted with a numeric sed
+# capture rather than field splitting.
+set -u
+[ -f /opt/tedge/env ] && . /opt/tedge/env
+SETTINGS="${MOD_METRICS_SETTINGS:-/opt/tedge/etc/metrics}"
+[ -f "$SETTINGS" ] && . "$SETTINGS"
+
+INTERVAL="${MOD_METRICS_POLL_INTERVAL:-60}"
+TYPE="${MOD_METRICS_TYPE:-resources}"
+SERIES="${MOD_METRICS_SERIES:-cpu memory disk environment}"
+TOPIC="te/device/main///m/$TYPE"
+
+# want <group> -- is <group> in the configured MOD_METRICS_SERIES list?
+want() {
+    for g in $SERIES; do [ "$g" = "$1" ] && return 0; done
+    return 1
+}
+
+# usedMiB totalMiB usedPercent  (uses MemAvailable, so cache/buffers count free)
+read_mem() {
+    awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{
+        if (t>0) printf "%.1f %.1f %.1f", (t-a)/1024, t/1024, (t-a)*100/t
+    }' /proc/meminfo
+}
+
+while :; do
+    payload=""
+
+    # CPU load average (1/5/15 min) from /proc/loadavg -- always dot-decimal.
+    if want cpu; then
+        set -- $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)
+        [ -n "${1:-}" ] && payload="${payload:+$payload,}\"cpu\":{\"load1\":$1,\"load5\":$2,\"load15\":$3}"
+    fi
+
+    # Memory.
+    if want memory; then
+        set -- $(read_mem)
+        [ -n "${3:-}" ] && payload="${payload:+$payload,}\"memory\":{\"usedPercent\":$3,\"usedMiB\":$1,\"totalMiB\":$2}"
+    fi
+
+    # Board sensors + free space from the ICR-OS status CLI. Read once only if a
+    # group that needs it is selected. Series with no value on this hardware
+    # (e.g. no supply-voltage sensor) are omitted automatically.
+    if want disk || want environment; then
+        S=$(/usr/bin/status sys 2>/dev/null)
+
+        if want disk; then
+            appsFree=$(echo "$S" | sed -n 's/.*Free Space[^0-9]*\([0-9][0-9.]*\)[^,]*MiB for apps.*/\1/p')
+            dataFree=$(echo "$S" | sed -n 's/.*,[^0-9]*\([0-9][0-9.]*\)[^,]*MiB for data.*/\1/p')
+            disk=""
+            [ -n "$appsFree" ] && disk="\"appsFreeMiB\":$appsFree"
+            [ -n "$dataFree" ] && disk="${disk:+$disk,}\"dataFreeMiB\":$dataFree"
+            [ -n "$disk" ] && payload="${payload:+$payload,}\"disk\":{$disk}"
+        fi
+
+        if want environment; then
+            temp=$(echo "$S" | sed -n 's/.*Temperature[^0-9-]*\(-\{0,1\}[0-9][0-9.]*\).*/\1/p')
+            volt=$(echo "$S" | sed -n 's/.*Supply Voltage[^0-9-]*\([0-9][0-9.]*\).*/\1/p')
+            envg=""
+            [ -n "$temp" ] && envg="\"temperature\":$temp"
+            [ -n "$volt" ] && envg="${envg:+$envg,}\"voltage\":$volt"
+            [ -n "$envg" ] && payload="${payload:+$payload,}\"environment\":{$envg}"
+        fi
+    fi
+
+    if [ -n "$payload" ]; then
+        tedge mqtt pub "$TOPIC" "{$payload}" 2>/dev/null \
+            || logger -t tedge "metrics-monitor: publish failed" 2>/dev/null
+    fi
+
+    sleep "$INTERVAL"
+done

@@ -1,0 +1,59 @@
+#!/bin/sh
+# tedge-log-register — register a log file (or glob) with thin-edge.io's log
+# management so it can be retrieved from Cumulocity IoT
+# (Device Management > Logs, the c8y_LogfileRequest operation).
+#
+# tedge-agent's file log plugin reads /opt/tedge/plugins/tedge-log-plugin.toml.
+# The thin-edge.io bundle already ships that file with entries for the
+# software-management and workflow logs -- so this helper must PRESERVE existing
+# content and only add/remove its own entries. Each managed entry is a [[files]]
+# block wrapped in sentinel comments tagged with a unique marker, so add is
+# idempotent and remove touches only that block. Mirrors tedge-config-register;
+# part of the platform contract (see docs/EXTENSION-API.md).
+#
+#   tedge-log-register add <marker> <path> <type>
+#   tedge-log-register remove <marker>
+#
+# <marker> is a unique id per entry (e.g. "<module>-<logname>"). <path> is a
+# file path or glob. <type> is the log-type name shown in the Cumulocity Logs
+# tab. Re-adding the same marker replaces its block.
+set -eu
+
+TOML=/opt/tedge/plugins/tedge-log-plugin.toml
+
+begin() { echo "# >>> tedge-log-register reg:$1"; }
+end()   { echo "# <<< tedge-log-register reg:$1"; }
+
+remove_block() {
+    marker=$1
+    [ -f "$TOML" ] || return 0
+    awk -v s="$(begin "$marker")" -v e="$(end "$marker")" '
+        $0==s { skip=1; next }
+        $0==e { skip=0; next }
+        !skip { print }
+    ' "$TOML" > "$TOML.tmp.$$" && mv "$TOML.tmp.$$" "$TOML"
+}
+
+case "${1:-}" in
+    add)
+        marker="${2:?marker required}"; path="${3:?path required}"; type="${4:?type required}"
+        mkdir -p "$(dirname "$TOML")"
+        [ -f "$TOML" ] || : > "$TOML"
+        remove_block "$marker"     # idempotent: drop any previous entry first
+        {
+            echo ""
+            begin "$marker"
+            echo "[[files]]"
+            echo "path = \"$path\""
+            echo "type = \"$type\""
+            end "$marker"
+        } >> "$TOML"
+        ;;
+    remove)
+        remove_block "${2:?marker required}"
+        ;;
+    *)
+        echo "usage: tedge-log-register {add <marker> <path> <type>|remove <marker>}" >&2
+        exit 2
+        ;;
+esac

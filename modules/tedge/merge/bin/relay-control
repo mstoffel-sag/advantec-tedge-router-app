@@ -13,7 +13,7 @@
 set -eu
 
 # Output polarity comes from the settings (MOD_RELAY_ACTIVE_LOW).
-SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/tedge/etc/relay}"
 [ -f "$SETTINGS" ] && . "$SETTINGS"
 ACTIVE_LOW="${MOD_RELAY_ACTIVE_LOW:-1}"
 
@@ -41,10 +41,16 @@ drive_output() {
         return 1
     fi
 }
-read_output() {  # echoes the electrical level (0/1); non-zero exit on failure
+read_output() {  # echoes the electrical level (0/1); non-zero exit only on real failure
     pin=$1
     if io_available; then
-        io get "$pin" 2>/dev/null
+        # ICR-OS `io get` prints the level to stdout AND returns it as its EXIT
+        # CODE (0 or 1) -- so exit 1 means "pin is high", NOT an error. Take the
+        # value from stdout and ignore the exit status (|| true keeps set -e
+        # from aborting when the pin reads high). Verified on an ICR-4400.
+        lvl=$(io get "$pin" 2>/dev/null || true)
+        if [ -n "$lvl" ]; then printf '%s\n' "$lvl"; return 0; fi
+        return 1
     elif [ -r "/sys/class/gpio/${pin}/value" ]; then
         cat "/sys/class/gpio/${pin}/value" 2>/dev/null
     else
