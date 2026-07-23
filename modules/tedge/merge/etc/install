@@ -42,6 +42,19 @@ chmod +x "$MOD_DIR/bin/"* "$MOD_DIR/etc/init" 2>/dev/null || true
 [ -d "$PREFIX/usr/bin" ] || mkdir -p "$PREFIX/usr/bin"
 [ -e "$PREFIX/usr/bin/tedge" ] || ln -sf "$MOD_DIR/bin/tedge" "$PREFIX/usr/bin/tedge"
 
+# Resolve the default config dir to our install location. The tedge binaries and
+# the file config plugin are compiled with the default config dir /etc/tedge, and
+# not everything honours TEDGE_CONFIG_DIR: tedge-agent invokes the file config
+# plugin with --config-dir /etc/tedge, so config snapshot/update failed with
+# "config file /etc/tedge/plugins/tedge-configuration-plugin.toml not found".
+# Symlinking /etc/tedge -> /opt/tedge makes every tool that falls back to the
+# default dir resolve the real config (and makes the bare `tedge ...` CLI work
+# without --config-dir). Only create it when absent or already our symlink.
+[ -d "$PREFIX/etc" ] || mkdir -p "$PREFIX/etc"
+if [ ! -e "$PREFIX/etc/tedge" ] || [ -L "$PREFIX/etc/tedge" ]; then
+    ln -sfn "$MOD_DIR" "$PREFIX/etc/tedge"
+fi
+
 # Configuration management: thin-edge.io's own config (tedge.toml, system.toml,
 # ...) is already registered by the bundled plugins/tedge-configuration-plugin.toml,
 # so it is retrievable/updatable from Cumulocity out of the box. We only ship the

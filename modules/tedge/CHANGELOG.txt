@@ -1,6 +1,20 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.5
+-----
+* Fix: configuration snapshot/upload (and update) failed with "config file
+  /etc/tedge/plugins/tedge-configuration-plugin.toml does not exist". The tedge
+  binaries and the file config plugin are compiled with the default config dir
+  /etc/tedge, and tedge-agent invokes the file config plugin with
+  --config-dir /etc/tedge rather than the runtime TEDGE_CONFIG_DIR (/opt/tedge),
+  so the plugin looked in the wrong place. etc/install now symlinks
+  /etc/tedge -> /opt/tedge, so every tool that falls back to the default config
+  dir resolves the real config. This also makes the bare `tedge ...` CLI work
+  over SSH without --config-dir. Verified on an ICR-4400: the file config plugin
+  lists and reads the config types, and `tedge config get c8y.url` works with no
+  flags.
+
 1.0.4
 -----
 * Investigating device naming: on the test device Cumulocity showed the device as

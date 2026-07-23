@@ -19,6 +19,13 @@ fi
 # force a Cumulocity re-registration every time. A stale store is harmless; if an
 # operator truly wants to purge the device identity they can remove it manually.
 
+# Remove the /etc/tedge -> /opt/tedge config-dir symlink (only if it is ours).
+if [ -L /etc/tedge ]; then
+    case "$(readlink /etc/tedge 2>/dev/null)" in
+        "$MOD_DIR"|"$MOD_DIR"/) rm -f /etc/tedge ;;
+    esac
+fi
+
 # Remove the /etc/init.d service links (only the ones pointing back into us).
 for l in /etc/init.d/S99mosquitto /etc/init.d/S99tedge-mapper-c8y /etc/init.d/S99tedge-agent; do
     [ -h "$l" ] || continue
