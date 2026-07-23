@@ -40,7 +40,9 @@ relay Router App - Changelog
   another app) previously never appeared in the UI. A lightweight poller
   (bin/relay-monitor, started by etc/init) reads the outputs every
   MOD_RELAY_POLL_INTERVAL seconds (default 5) and republishes c8y_RelayArray
-  only when the state changes. Added `relay-control get <pin>` (reads an output
+  (whole array) and c8y_Relay (first output only) when their state changes, so
+  BOTH the RelayArray widget and the single c8y_Relay widget track device-side
+  changes. Added `relay-control get <pin>` (reads an output
   as CLOSED/OPEN, honouring MOD_RELAY_ACTIVE_LOW) for the poller. MOD_RELAY_ENABLED
   now defaults to 1 (it gates the boot-time seed and the monitor; operations work
   regardless). Verified on an ICR-4400: `io set out1 1` on the device propagated

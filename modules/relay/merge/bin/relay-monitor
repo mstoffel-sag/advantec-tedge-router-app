@@ -20,20 +20,29 @@ TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
 INTERVAL="${MOD_RELAY_POLL_INTERVAL:-5}"
 HERE=$(dirname "$0")
 
-last=""
+last=""       # last published c8y_RelayArray body
+last_first="" # last published c8y_Relay state (first output)
 while :; do
-    arr=""
+    arr=""; first=""
     for pin in $OUTPUTS; do
         st=$("$HERE/relay-control" get "$pin" 2>/dev/null)
         [ -n "$st" ] || st=OPEN
         arr="${arr:+$arr,}\"$st\""
+        [ -n "$first" ] || first=$st
     done
 
+    # c8y_RelayArray -- the whole array (RelayArray widget). Retained so the
+    # fragment persists; the mapper mirrors it to the c8y managed object.
     if [ -n "$arr" ] && [ "$arr" != "$last" ]; then
-        # Retained so the fragment persists; the mapper mirrors it to the c8y
-        # managed object, updating the RelayArray widget.
         tedge mqtt pub -r "$TWIN_BASE/c8y_RelayArray" "[$arr]" 2>/dev/null \
             && { logger -t relay "monitor: reflected c8y_RelayArray=[$arr]" 2>/dev/null; last="$arr"; }
+    fi
+
+    # c8y_Relay -- the FIRST output only (single-relay widget/operation), so its
+    # device-side state tracks too.
+    if [ -n "$first" ] && [ "$first" != "$last_first" ]; then
+        tedge mqtt pub -r "$TWIN_BASE/c8y_Relay" "{\"relayState\":\"$first\"}" 2>/dev/null \
+            && { logger -t relay "monitor: reflected c8y_Relay=$first" 2>/dev/null; last_first="$first"; }
     fi
 
     sleep "$INTERVAL"
