@@ -1,8 +1,9 @@
 #!/bin/sh
-# relay-control <state> <pin>
+# relay-control <state> <pin>   -- drive one digital output (relay)
+# relay-control get   <pin>     -- read one output, print CLOSED or OPEN
 #
-# Drives one digital output (relay) on the router. This is the ONE
-# hardware-specific script in the extension; adapt drive_output() to the device.
+# This is the ONE hardware-specific script in the extension; adapt the io
+# helpers below to the device.
 #
 # <state> accepts the Cumulocity relay values and convenient aliases:
 #   CLOSED | closed | on | 1 | true   -> energise the relay (contact CLOSED)
@@ -14,30 +15,13 @@ set -eu
 # Output polarity comes from the settings (MOD_RELAY_ACTIVE_LOW).
 SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
 [ -f "$SETTINGS" ] && . "$SETTINGS"
-
-STATE_ARG="${1:-}"
-PIN="${2:-}"
-[ -n "$PIN" ] || { echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2; }
-
-case "$STATE_ARG" in
-    CLOSED|closed|on|ON|1|true|TRUE|yes)  STATE=CLOSED ;;
-    OPEN|open|off|OFF|0|false|FALSE|no)   STATE=OPEN ;;
-    *) echo "usage: relay-control <OPEN|CLOSED|on|off> <pin>" >&2; exit 2 ;;
-esac
-
-# Desired contact -> electrical level. On Advantech ICR the digital output is
-# active-low relative to the relay contact (io=1 OPENS/de-energises the contact),
-# so MOD_RELAY_ACTIVE_LOW=1 (the default) inverts the level so CLOSED energises
-# the contact as the Cumulocity widget expects. Set it to 0 on hardware where
-# io=1 closes the contact.
-if [ "$STATE" = CLOSED ]; then VAL=1; else VAL=0; fi
-[ "${MOD_RELAY_ACTIVE_LOW:-1}" = "1" ] && VAL=$((1 - VAL))
+ACTIVE_LOW="${MOD_RELAY_ACTIVE_LOW:-1}"
 
 # --- Hardware interface -------------------------------------------------------
 # ICR-OS exposes the router's binary outputs via the `io` utility, e.g.
-# `io set out0 1`. This works across ICR families (ICR-1642 has one output OUT0;
-# ICR-44xx has OUT0/OUT1; expansion boards add more). VERIFY the exact `io`
-# output names on your device (CLI application note) and adjust here only.
+# `io set out0 1` / `io get out0`. This works across ICR families (ICR-1642 has
+# one output OUT0; ICR-44xx has OUT0/OUT1; expansion boards add more). VERIFY the
+# exact `io` output names on your device (CLI application note) and adjust here.
 #
 # NOTE: detect `io` by its executable path, NOT `command -v`. The ICR-OS shell
 # (abox) has no `command` builtin -- `command -v io` errors with
@@ -57,6 +41,48 @@ drive_output() {
         return 1
     fi
 }
+read_output() {  # echoes the electrical level (0/1); non-zero exit on failure
+    pin=$1
+    if io_available; then
+        io get "$pin" 2>/dev/null
+    elif [ -r "/sys/class/gpio/${pin}/value" ]; then
+        cat "/sys/class/gpio/${pin}/value" 2>/dev/null
+    else
+        return 1
+    fi
+}
+
+# electrical level <-> contact state, honouring the active-low polarity.
+level_to_state() { [ "$ACTIVE_LOW" = 1 ] && set -- $((1 - $1)); [ "$1" = 1 ] && echo CLOSED || echo OPEN; }
+
+# --- get mode -----------------------------------------------------------------
+if [ "${1:-}" = get ]; then
+    PIN="${2:-}"
+    [ -n "$PIN" ] || { echo "usage: relay-control get <pin>" >&2; exit 2; }
+    lvl=$(read_output "$PIN") || { echo "ERROR: cannot read output '${PIN}'" >&2; exit 1; }
+    case "$lvl" in 0|1) ;; *) echo "ERROR: unexpected level '${lvl}' for '${PIN}'" >&2; exit 1 ;; esac
+    level_to_state "$lvl"
+    exit 0
+fi
+
+# --- drive mode ---------------------------------------------------------------
+STATE_ARG="${1:-}"
+PIN="${2:-}"
+[ -n "$PIN" ] || { echo "usage: relay-control <OPEN|CLOSED|on|off|get> <pin>" >&2; exit 2; }
+
+case "$STATE_ARG" in
+    CLOSED|closed|on|ON|1|true|TRUE|yes)  STATE=CLOSED ;;
+    OPEN|open|off|OFF|0|false|FALSE|no)   STATE=OPEN ;;
+    *) echo "usage: relay-control <OPEN|CLOSED|on|off|get> <pin>" >&2; exit 2 ;;
+esac
+
+# Desired contact -> electrical level. On Advantech ICR the digital output is
+# active-low relative to the relay contact (io=1 OPENS/de-energises the contact),
+# so MOD_RELAY_ACTIVE_LOW=1 (the default) inverts the level so CLOSED energises
+# the contact as the Cumulocity widget expects. Set it to 0 on hardware where
+# io=1 closes the contact.
+if [ "$STATE" = CLOSED ]; then VAL=1; else VAL=0; fi
+[ "$ACTIVE_LOW" = 1 ] && VAL=$((1 - VAL))
 
 drive_output "$PIN" "$VAL"
 echo "relay ${PIN} -> ${STATE} (io=${VAL})"

@@ -1,0 +1,40 @@
+#!/bin/sh
+# relay-monitor -- reflect DEVICE-SIDE relay changes back to Cumulocity.
+#
+# Relays emit no change event, so an output flipped by anything other than a
+# Cumulocity operation (local automation/profiles, the CLI, another app, a
+# physical cause) would never appear in the cloud. This lightweight poller reads
+# every configured output and, whenever the combined state changes, republishes
+# the c8y_RelayArray twin fragment so the Cumulocity RelayArray widget tracks the
+# real device state. It is started/stopped by etc/init (backgrounded).
+#
+# Cost: one `io get` per output every MOD_RELAY_POLL_INTERVAL seconds, and an
+# MQTT publish only when something actually changed.
+set -u
+[ -f /opt/tedge/env ] && . /opt/tedge/env
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+[ -f "$SETTINGS" ] && . "$SETTINGS"
+
+OUTPUTS="${MOD_RELAY_OUTPUTS:-out0}"
+TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
+INTERVAL="${MOD_RELAY_POLL_INTERVAL:-5}"
+HERE=$(dirname "$0")
+
+last=""
+while :; do
+    arr=""
+    for pin in $OUTPUTS; do
+        st=$("$HERE/relay-control" get "$pin" 2>/dev/null)
+        [ -n "$st" ] || st=OPEN
+        arr="${arr:+$arr,}\"$st\""
+    done
+
+    if [ -n "$arr" ] && [ "$arr" != "$last" ]; then
+        # Retained so the fragment persists; the mapper mirrors it to the c8y
+        # managed object, updating the RelayArray widget.
+        tedge mqtt pub -r "$TWIN_BASE/c8y_RelayArray" "[$arr]" 2>/dev/null \
+            && { logger -t relay "monitor: reflected c8y_RelayArray=[$arr]" 2>/dev/null; last="$arr"; }
+    fi
+
+    sleep "$INTERVAL"
+done
