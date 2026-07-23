@@ -1,8 +1,19 @@
 thin-edge.io Router App - Changelog
 ===================================
 
-1.0.5
+1.0.6
 -----
+* Fix: changing the configured device id had no effect -- the Cumulocity device
+  kept its original name/id no matter what was entered. thin-edge reads the
+  device id from the certificate's CN, and the persistent cert store
+  (/opt/tedge-data, added in 1.0.3) survives reinstalls, so an existing cert
+  pinned the device to its old id forever and a newly-entered MOD_TEDGE_DEVICE_ID
+  was ignored. etc/init now detects when MOD_TEDGE_DEVICE_ID is EXPLICITLY set to
+  a value different from the current certificate's CN and removes the stale
+  certificate so a fresh one is issued for the new id (i.e. a re-registration --
+  the new id must be registered in Cumulocity). Unchanged/derived ids keep the
+  persistent cert as before. NOTE: the device name in Cumulocity follows the
+  device id (certificate CN); thin-edge does not set a separate display name.
 * Fix: configuration snapshot/upload (and update) failed with "config file
   /etc/tedge/plugins/tedge-configuration-plugin.toml does not exist". The tedge
   binaries and the file config plugin are compiled with the default config dir

@@ -92,10 +92,31 @@ anchor_persistent_certs() {
         || tedge config set device.key_path "$CERT_DIR/tedge-private-key.pem"
 }
 
+# thin-edge reads the device id from the certificate's CN, and our persistent
+# cert store survives reinstalls -- so once a device has a cert it keeps that id
+# (and therefore its Cumulocity name) forever, ignoring a newly-entered
+# MOD_TEDGE_DEVICE_ID. If the operator EXPLICITLY sets a device id that differs
+# from the current certificate's CN, treat the cert as stale and remove it so a
+# fresh certificate is issued for the new id (a re-registration). Only triggers
+# on an explicit, changed MOD_TEDGE_DEVICE_ID -- never when the id is derived.
+drop_cert_on_id_change() {
+    [ -n "$MOD_TEDGE_DEVICE_ID" ] || return 0
+    cp=$(tedge config get device.cert_path 2>/dev/null)
+    [ -f "$cp" ] || return 0
+    current=$(tedge config get device.id 2>/dev/null)   # = cert CN while a cert exists
+    if [ -n "$current" ] && [ "$current" != "$MOD_TEDGE_DEVICE_ID" ]; then
+        log "Device id change requested ('$current' -> '$MOD_TEDGE_DEVICE_ID'); removing old certificate to re-register"
+        rm -f "$cp" "$(tedge config get device.key_path 2>/dev/null)"
+    fi
+}
+
 configure() {
     # Keep the device certificate on persistent storage (before the cert-exists
     # checks below, so an upgraded device finds its cert and skips re-download).
     anchor_persistent_certs
+
+    # Honour an explicit device-id change by dropping a now-stale certificate.
+    drop_cert_on_id_change
 
     # Cumulocity URL
     if [ -n "$MOD_TEDGE_C8Y_URL" ]; then
