@@ -1,0 +1,29 @@
+# thin-edge.io Router App -- system metrics configuration.
+#
+# Controls the built-in metrics poller (bin/metrics-monitor), started by the
+# module's etc/init when MOD_METRICS_ENABLED=1. This file is registered with
+# thin-edge.io's configuration plugin as the "metrics" configuration type, so it
+# can be snapshotted and updated from Cumulocity (Device Management >
+# Configuration) as well as edited over SSH. It contains no secrets.
+#
+# Apply changes with:  /opt/tedge/etc/init restart
+
+# Transmit metrics to Cumulocity (1 = enabled, 0 = disabled). Enabled by default.
+# When disabled, nothing is sampled or transmitted.
+MOD_METRICS_ENABLED=1
+
+# How often (seconds) to sample and transmit the selected metrics.
+MOD_METRICS_POLL_INTERVAL=60
+
+# Which metrics to transmit -- a space-separated list of series groups. Remove a
+# name to stop transmitting that group; leave empty to transmit none.
+# Available groups:
+#   cpu          load average (load1 / load5 / load15), from /proc/loadavg
+#   memory       usedPercent / usedMiB / totalMiB, from /proc/meminfo
+#   disk         apps/data partition free space (MiB), from `status sys`
+#   environment  board temperature (deg C) and supply voltage (V), from `status sys`
+MOD_METRICS_SERIES="cpu memory disk environment"
+
+# Cumulocity measurement type (the label shown in Device Management > Measurements
+# and used to group the series).
+MOD_METRICS_TYPE=resources

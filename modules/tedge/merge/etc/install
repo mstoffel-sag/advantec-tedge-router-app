@@ -86,6 +86,38 @@ fi
 # bin/tedge-config-register helper (chmod'd above) so extension modules can add
 # their own files to that list without clobbering it (see docs/EXTENSION-API.md).
 
+# Log management: the bundled plugins/tedge-log-plugin.toml only registers
+# thin-edge.io's own workflow/software-management logs. Register the router's
+# system log and the tedge service logs so they are retrievable from Cumulocity
+# (Device Management > Logs). We ship the bin/tedge-log-register helper (mirror
+# of tedge-config-register) so extension modules can add their own log types the
+# same way, without clobbering the shipped entries (see docs/EXTENSION-API.md).
+if [ -x "$MOD_DIR/bin/tedge-log-register" ]; then
+    R="$MOD_DIR/bin/tedge-log-register"
+    "$R" add tedge-system       "/var/log/messages*"               system        || true
+    "$R" add tedge-mosquitto    "/var/log/tedge/mosquitto.log"     mosquitto     || true
+    "$R" add tedge-agent        "/var/log/tedge/tedge-agent.log"   tedge-agent   || true
+    "$R" add tedge-mapper       "/var/log/tedge/tedge-mapper-c8y.log" tedge-mapper || true
+fi
+
+# System metrics: the built-in poller (bin/metrics-monitor, started by etc/init
+# when enabled) is configured by etc/metrics. Register that file as the "metrics"
+# configuration type so the whole config -- the enable flag, transmission
+# interval and selected series -- can be snapshotted/updated from Cumulocity
+# (Device Management > Configuration). It holds no secrets. tedge-config-register
+# appends only its own marked block, preserving the bundle's own entries.
+if [ -x "$MOD_DIR/bin/tedge-config-register" ] && [ -f "$MOD_DIR/etc/metrics" ]; then
+    "$MOD_DIR/bin/tedge-config-register" add metrics "$MOD_DIR/etc/metrics" metrics || true
+fi
+
+# Relay control: the c8y_Relay / c8y_RelayArray operation declarations ship
+# directly in operations/c8y/ (no symlink needed -- this IS the platform dir),
+# so the mapper announces them on connect. Register the relay config file as the
+# "relay" configuration type so it too is cloud-editable. No secrets.
+if [ -x "$MOD_DIR/bin/tedge-config-register" ] && [ -f "$MOD_DIR/etc/relay" ]; then
+    "$MOD_DIR/bin/tedge-config-register" add relay "$MOD_DIR/etc/relay" relay || true
+fi
+
 # ---------------------------------------------------------------------------
 # Wire the per-service scripts into /etc/init.d so thin-edge.io's own SysV
 # tedgectl (which system.toml invokes for service control) resolves them by

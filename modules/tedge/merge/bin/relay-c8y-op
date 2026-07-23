@@ -19,7 +19,7 @@ set -eu
 [ -f /opt/tedge/env ] && . /opt/tedge/env
 # Sourced by tedge-agent, whose environment does NOT carry the relay settings,
 # so load them here to honour MOD_RELAY_OUTPUTS.
-SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/tedge/etc/relay}"
 [ -f "$SETTINGS" ] && . "$SETTINGS"
 OUTPUTS="${MOD_RELAY_OUTPUTS:-out0}"
 HERE=$(dirname "$0")

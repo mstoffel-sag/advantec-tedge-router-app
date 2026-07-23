@@ -1,8 +1,9 @@
 # Cumulocity custom operation: c8y_RelayArray (relay array / RelayArray widget)
 #
-# etc/install symlinks this file into /opt/tedge/operations/c8y/ and runs
-# `tedge reconnect c8y`, which adds c8y_RelayArray to the device's supported
-# operations (SmartREST 114) and routes matching operations to the command.
+# Shipped by the platform module directly into /opt/tedge/operations/c8y/.
+# thin-edge.io adds c8y_RelayArray to the device's supported operations
+# (SmartREST 114) when the mapper connects (etc/init runs `tedge connect c8y`)
+# and routes matching operations to the command below.
 #
 # c8y_RelayArray is a JSON operation carrying the FULL desired state of every
 # relay: {"c8y_RelayArray":["CLOSED","CLOSED","CLOSED","OPEN"]}. on_fragment
@@ -18,4 +19,4 @@
 [exec]
 topic = "c8y/devicecontrol/notifications"
 on_fragment = "c8y_RelayArray"
-command = "/opt/relay/bin/relay-c8y-op relayarray ${.payload.c8y_RelayArray}"
+command = "/opt/tedge/bin/relay-c8y-op relayarray ${.payload.c8y_RelayArray}"

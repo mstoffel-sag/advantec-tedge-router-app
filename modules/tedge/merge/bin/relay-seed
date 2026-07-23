@@ -9,7 +9,7 @@
 # long-running daemon. The relay itself is driven by c8y operations (relay-c8y-op).
 set -u
 [ -f /opt/tedge/env ] && . /opt/tedge/env
-SETTINGS="${MOD_RELAY_SETTINGS:-/opt/relay/etc/settings}"
+SETTINGS="${MOD_RELAY_SETTINGS:-/opt/tedge/etc/relay}"
 [ -f "$SETTINGS" ] && . "$SETTINGS"
 
 OUTPUTS="${MOD_RELAY_OUTPUTS:-out0}"
