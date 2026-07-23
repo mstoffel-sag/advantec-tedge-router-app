@@ -1,6 +1,19 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.7
+-----
+* Fix: fully remove the app's data when the Router App is deleted. The persistent
+  certificate store /opt/tedge-data (added in 1.0.3) is intentionally kept across
+  upgrades, but it must not linger after the app is deleted -- it holds the device
+  certificate and key. It cannot be removed in etc/uninstall (that also runs on an
+  upgrade, which would drop the cert). Instead etc/install now writes a small
+  self-cleaning guard, /opt/tedge-data/etc/init, which ICR-OS runs at boot via
+  /etc/init.d/module: on the first boot after /opt/tedge is gone (app deleted) it
+  deletes /opt/tedge-data, while leaving it untouched whenever tedge is still
+  installed (upgrade). Together with the existing uninstall cleanup (/usr/bin/tedge,
+  /etc/tedge, /etc/init.d/S99* links), deleting the app now removes everything.
+
 1.0.6
 -----
 * Fix: changing the configured device id had no effect -- the Cumulocity device

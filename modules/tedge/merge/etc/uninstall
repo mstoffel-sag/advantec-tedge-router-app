@@ -14,10 +14,11 @@ if [ -h /usr/bin/tedge ]; then
 fi
 
 # NOTE: we deliberately do NOT remove /opt/tedge-data (the persistent device
-# certificate store). An ICR-OS upgrade runs this uninstall before reinstalling,
-# so deleting it here would defeat its whole purpose (surviving upgrades) and
-# force a Cumulocity re-registration every time. A stale store is harmless; if an
-# operator truly wants to purge the device identity they can remove it manually.
+# certificate store) here. An ICR-OS upgrade runs this uninstall before
+# reinstalling, so deleting it here would defeat its purpose (surviving upgrades)
+# and force a Cumulocity re-registration every time. On a genuine DELETE the
+# store is instead removed by its own self-cleaning guard (/opt/tedge-data/etc/init,
+# written by etc/install) on the first boot after /opt/tedge is gone.
 
 # Remove the /etc/tedge -> /opt/tedge config-dir symlink (only if it is ours).
 if [ -L /etc/tedge ]; then
