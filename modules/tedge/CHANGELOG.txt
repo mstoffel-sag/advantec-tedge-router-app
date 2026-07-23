@@ -1,6 +1,20 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.4
+-----
+* Fix: the device appeared in Cumulocity as "MQTT Device <id>" (type
+  c8y_MQTTDevice). thin-edge registers its services but never publishes a
+  registration for the MAIN device, so it only ever sends inventory updates --
+  never a named create. Cumulocity's MQTT auto-registration then created the
+  device from the earliest telemetry and named it "MQTT Device <id>", which
+  stuck. etc/init now publishes a retained main-device registration
+  (te/device/main// with {"@type":"device","name":<device.id>,"type":<device.type>})
+  after starting the broker but BEFORE starting the mapper, so the device is
+  announced with the correct name/type up front and no auto-created name sticks.
+  Verified on an ICR-4400: the managed object is named after the device id
+  (type thin-edge.io) instead of "MQTT Device ...".
+
 1.0.3
 -----
 * Fix: keep the device certificate across module reinstalls/upgrades. ICR-OS

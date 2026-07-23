@@ -203,6 +203,40 @@ heal_mapper_subscriptions() {
     return 0
 }
 
+# Give the main device its proper name/type in Cumulocity, published RETAINED to
+# the local broker BEFORE the mapper connects.
+#
+# thin-edge never publishes a te/device/main// registration for the MAIN device
+# (only for its services), so it sends inventory *updates* but no named create.
+# Cumulocity's MQTT auto-registration then creates the device from the earliest
+# telemetry and names it "MQTT Device <id>" (type c8y_MQTTDevice), which sticks.
+# We announce the name two ways, so it is correct on a fresh device AND corrected
+# on one that was already auto-created:
+#   1. te/device/main// registration -- the canonical thin-edge registration;
+#      names the device at creation time on a fresh device. (This flows-mapper
+#      rejects it as an *update* once the device exists -- harmless.)
+#   2. c8y inventory update -- sets name/type directly; this is what reliably
+#      renames a device Cumulocity already auto-created as "MQTT Device <id>".
+# Both retained, so they are announced as soon as the bridge links up.
+register_main_device() {
+    dev_id=$(tedge config get device.id 2>/dev/null)
+    [ -n "$dev_id" ] || { log "WARN: device.id unknown; skipping main-device registration"; return 0; }
+    dev_type=$(tedge config get device.type 2>/dev/null)
+    [ -n "$dev_type" ] || dev_type="thin-edge.io"
+
+    # Wait briefly for the broker (just started), then announce.
+    i=0
+    while [ "$i" -lt 10 ]; do
+        tedge mqtt pub -r "te/device/main//" \
+            "{\"@type\":\"device\",\"name\":\"$dev_id\",\"type\":\"$dev_type\"}" 2>/dev/null && break
+        i=$((i + 1)); sleep 1
+    done
+    tedge mqtt pub -r "c8y/inventory/managedObjects/update/$dev_id" \
+        "{\"name\":\"$dev_id\",\"type\":\"$dev_type\"}" 2>/dev/null \
+        && log "Announced main device '$dev_id' (type $dev_type)" \
+        || log "WARN: main-device name not announced (broker not ready)"
+}
+
 start_tedge() {
     log "Starting $MOD_NAME"
 
@@ -212,9 +246,13 @@ start_tedge() {
 
     configure || { log "Provisioning failed; not starting daemons"; return 1; }
 
-    # Local MQTT broker, then the c8y mapper (built-in TLS bridge to the cloud)
-    # and the device management agent -- via the shared per-service scripts.
-    for s in $SERVICES; do svc start "$s"; done
+    # Start the broker first, register the main device (named) while the mapper
+    # is still down so the registration is retained and announced BEFORE any
+    # telemetry, then start the mapper (cloud bridge) and the agent.
+    svc start mosquitto
+    register_main_device
+    svc start tedge-mapper-c8y
+    svc start tedge-agent
 
     log "$MOD_NAME started"
 
