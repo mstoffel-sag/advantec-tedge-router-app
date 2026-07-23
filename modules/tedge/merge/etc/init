@@ -224,28 +224,6 @@ heal_mapper_subscriptions() {
     return 0
 }
 
-# Set the Cumulocity device name/type to the device id.
-#
-# thin-edge (this 2.0.1 flows mapper) never registers the MAIN device with a
-# name -- it only sends inventory updates -- so Cumulocity's MQTT auto-
-# registration creates the device from the earliest telemetry and names it
-# "MQTT Device <id>" (type c8y_MQTTDevice), which otherwise sticks. Tested on a
-# clean install: thin-edge does NOT name it, and a te/device/main// registration
-# is rejected as an unsupported twin update. The reliable fix is a direct c8y
-# inventory update, applied AFTER the mapper has connected (so the device object
-# exists): it renames the device to its id and sets type "thin-edge.io". Runs on
-# every start (idempotent); on a fresh registration the name settles within a few
-# seconds of first connect.
-set_c8y_device_name() {
-    dev_id=$(tedge config get device.id 2>/dev/null)
-    [ -n "$dev_id" ] || return 0
-    dev_type=$(tedge config get device.type 2>/dev/null)
-    [ -n "$dev_type" ] || dev_type="thin-edge.io"
-    tedge mqtt pub "c8y/inventory/managedObjects/update/$dev_id" \
-        "{\"name\":\"$dev_id\",\"type\":\"$dev_type\"}" 2>/dev/null \
-        && log "Set Cumulocity device name to '$dev_id' (type $dev_type)"
-}
-
 start_tedge() {
     log "Starting $MOD_NAME"
 
@@ -255,18 +233,30 @@ start_tedge() {
 
     configure || { log "Provisioning failed; not starting daemons"; return 1; }
 
-    # Local MQTT broker, then the c8y mapper (built-in TLS bridge to the cloud)
-    # and the device management agent -- via the shared per-service scripts.
-    for s in $SERVICES; do svc start "$s"; done
+    # Start the local MQTT broker first.
+    svc start mosquitto
+
+    # Bring up the Cumulocity link via thin-edge's own `tedge connect c8y`, the
+    # way the stock bundle's bootstrap does. connect creates the device in
+    # Cumulocity with its proper name/type (a direct, certificate-authenticated
+    # REST call) BEFORE any telemetry, then brings up the built-in bridge and
+    # starts the mapper -- so Cumulocity does not auto-register the device as
+    # "MQTT Device <id>". Idempotent via reconnect. If it fails (no network / not
+    # yet registered), start the mapper directly so we still run and retry.
+    if tedge reconnect c8y >/dev/null 2>&1; then
+        log "connected to Cumulocity (device created/verified by tedge connect)"
+    else
+        log "tedge connect c8y failed; starting mapper directly (will retry next boot)"
+        svc start tedge-mapper-c8y
+    fi
+
+    # Device management agent.
+    svc start tedge-agent
 
     log "$MOD_NAME started"
 
     # Self-heal the c8y-ca first-connect subscription race (see the function).
     heal_mapper_subscriptions
-
-    # Rename the device away from Cumulocity's auto-assigned "MQTT Device <id>"
-    # (the device object now exists after the mapper connected). See the function.
-    set_c8y_device_name
 }
 
 stop_tedge() {

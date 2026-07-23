@@ -1,6 +1,23 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.9
+-----
+* Fix (proper root cause of the "MQTT Device <id>" naming): the Router App
+  started the mapper directly and never ran `tedge connect c8y`. Stock thin-edge
+  runs it during bootstrap, and `tedge connect` creates the device in Cumulocity
+  with its proper name/type via a direct, certificate-authenticated REST call
+  ("Creating device in Cumulocity cloud") BEFORE any telemetry -- so Cumulocity
+  never auto-registers it as "MQTT Device <id>". Because we skipped connect, the
+  mapper's first telemetry triggered MQTT auto-registration and the placeholder
+  name stuck. etc/init now brings up the cloud link with `tedge connect c8y`
+  (via reconnect, idempotent) after starting the broker, then starts the agent;
+  it falls back to starting the mapper directly if connect fails (no network /
+  not yet registered) and retries next boot. The 1.0.8 inventory-rename
+  workaround is removed -- thin-edge names the device itself now.
+  Verified on an ICR-4400: after deleting the device object, `tedge connect`
+  recreated it as "adva" (type thin-edge.io), not "MQTT Device adva".
+
 1.0.8
 -----
 * Fix: the Cumulocity device name is now set to the device id instead of the
