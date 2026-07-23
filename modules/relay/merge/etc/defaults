@@ -6,8 +6,15 @@
 # the next relay operation; run "/opt/relay/etc/init restart" to also re-seed the
 # widget state.
 
-# Start (seed the widget state) automatically (1 = enabled, 0 = disabled).
-MOD_RELAY_ENABLED=0
+# Enable the relay integration (1 = enabled, 0 = disabled). When enabled, boot
+# seeds the widget state and starts relay-monitor, which reflects device-side
+# output changes back to Cumulocity. Cumulocity operations drive the outputs
+# regardless of this flag; it gates the boot-time seed and the monitor daemon.
+MOD_RELAY_ENABLED=1
+
+# How often (seconds) relay-monitor polls the outputs to detect device-side
+# changes and reflect them to Cumulocity.
+MOD_RELAY_POLL_INTERVAL=5
 
 # Outputs this device controls, as an ordered, space-separated list of ICR-OS
 # `io` output names. Array position maps to a c8y_RelayArray element:
@@ -16,3 +23,10 @@ MOD_RELAY_ENABLED=0
 # ICR-1642 has one output (out0); ICR-44xx has two (out0 out1). Use exact `io`
 # names for expansion-port outputs, e.g. "out0 out1 xcout0".
 MOD_RELAY_OUTPUTS="out0 out1"
+
+# Output polarity. On Advantech ICR the digital output is active-low relative to
+# the relay contact: `io set outN 1` OPENS (de-energises) the contact. With
+# MOD_RELAY_ACTIVE_LOW=1 (default) a Cumulocity "CLOSED"/on command energises the
+# contact and "OPEN"/off de-energises it, matching the widget. Set to 0 for
+# hardware where `io set outN 1` closes the contact.
+MOD_RELAY_ACTIVE_LOW=1

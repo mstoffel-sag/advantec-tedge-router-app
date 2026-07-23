@@ -1,11 +1,12 @@
 #!/bin/sh
-# ICR-OS service control for the relay extension (cloud-only).
+# ICR-OS service control for the relay extension.
 #
-# There is no persistent daemon: relays are switched by Cumulocity operations
-# (relay-c8y-op, invoked by tedge-agent). "start" just seeds the initial
-# c8y_RelayArray managed-object fragment so the RelayArray widget renders one
-# toggle per configured output; the seeder retries in the background until the
-# broker is up, then exits.
+# Relays are switched by Cumulocity operations (relay-c8y-op, dispatched by the
+# c8y mapper). "start" (a) seeds the initial c8y_RelayArray managed-object
+# fragment so the RelayArray widget renders one toggle per configured output
+# (relay-seed retries until the broker is up, then exits) and (b) launches
+# relay-monitor, a lightweight poller that reflects DEVICE-SIDE output changes
+# (flipped by anything other than a cloud operation) back to Cumulocity.
 
 MOD_NAME=relay
 MOD_DIR=/opt/$MOD_NAME
@@ -29,13 +30,19 @@ start_relay() {
     log "Starting $MOD_NAME (outputs: ${MOD_RELAY_OUTPUTS:-out0})"
     # Seed the widget state in the background; it retries then exits on its own.
     "$BIN/relay-seed" >> "$LOGDIR/seed.log" 2>&1 &
+    # Reflect device-side changes to c8y. Kill any stale instance first so a
+    # restart never leaves two pollers (no pgrep dependency).
+    pkill -f "$BIN/relay-monitor" 2>/dev/null || true
+    "$BIN/relay-monitor" >> "$LOGDIR/monitor.log" 2>&1 &
 }
 
 stop_relay() {
-    # Nothing persistent to stop; just cancel a seeder still retrying.
+    pkill -f "$BIN/relay-monitor" 2>/dev/null || true
     pkill -f "$BIN/relay-seed" 2>/dev/null || true
     log "Stopped $MOD_NAME"
 }
+
+monitor_running() { ps w 2>/dev/null | grep -v grep | grep -q "relay-monitor"; }
 
 case "$1" in
     start)
@@ -51,7 +58,11 @@ case "$1" in
         echo "Module $MOD_NAME:"
         if [ "$MOD_RELAY_ENABLED" = "1" ]; then
             echo "  enabled; outputs: ${MOD_RELAY_OUTPUTS:-out0}"
-            echo "  (no daemon; driven by Cumulocity c8y_Relay / c8y_RelayArray operations)"
+            if monitor_running; then
+                echo "  monitor: running (poll ${MOD_RELAY_POLL_INTERVAL:-5}s)"
+            else
+                echo "  monitor: stopped"
+            fi
         else
             echo "  disabled (set MOD_RELAY_ENABLED=1)"; exit 1
         fi ;;

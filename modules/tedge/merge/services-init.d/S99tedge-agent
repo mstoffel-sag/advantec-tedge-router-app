@@ -1,0 +1,66 @@
+#!/bin/sh
+# /etc/init.d/S99tedge-agent -- device management agent for the thin-edge.io
+# Router App (software, configuration, log, restart operations).
+#
+# Device-native service control for Advantech ICR-OS: SysV shell init, no
+# start-stop-daemon and no runit (neither exists on ICR-OS). Follows the same
+# style as other Router Apps (see /opt/wadmp_client/etc/init and
+# /etc/init.d/ssh): background the daemon and track/stop it with pidof + kill.
+# Invoked directly, from the module's etc/init, and via bin/tedgectl (which
+# thin-edge's system.toml calls for service control). Hardcoded to /opt/tedge.
+
+CONFIG_DIR=/opt/tedge
+BIN=$CONFIG_DIR/bin
+[ -f "$CONFIG_DIR/env" ] && . "$CONFIG_DIR/env"
+PATH=/bin:/usr/bin:/sbin:/usr/sbin:$BIN
+export TEDGE_RUN_LOCK_FILES="false"
+
+NAME=tedge-agent
+PROC=tedge-agent
+DAEMON="$BIN/tedge-agent"
+DAEMON_ARGS=""
+run_service=1
+[ -e "/etc/default/$NAME" ] && . "/etc/default/$NAME"
+
+LOG_DIR=/var/log/tedge
+LOG_FILE=$LOG_DIR/$NAME.log
+
+# Create runtime dirs and the tedge multi-call symlinks. Idempotent.
+prestart() { "$BIN/tedge" init --user root --group root >/dev/null 2>&1 || true; }
+
+is_running() { pidof "$PROC" >/dev/null 2>&1; }
+
+do_start() {
+    [ "$run_service" = 1 ] || { echo "$NAME disabled"; return 0; }
+    if is_running; then echo "$NAME already running"; return 0; fi
+    echo -n "Starting $NAME: "
+    prestart
+    mkdir -p "$LOG_DIR" 2>/dev/null || true
+    $DAEMON $DAEMON_ARGS >> "$LOG_FILE" 2>&1 &
+    echo "done"
+}
+
+do_stop() {
+    echo -n "Stopping $NAME: "
+    if is_running; then
+        kill $(pidof "$PROC") 2>/dev/null
+        i=0
+        while is_running && [ "$i" -lt 30 ]; do sleep 1; i=$((i + 1)); done
+        is_running && kill -9 $(pidof "$PROC") 2>/dev/null
+    fi
+    echo "done"
+}
+
+case "$1" in
+    start)                do_start ;;
+    stop)                 do_stop ;;
+    restart|force-reload) do_stop; do_start ;;
+    try-restart)          if is_running; then do_stop; do_start; fi ;;
+    status)
+        if is_running; then echo "$NAME is running"; exit 0
+        else echo "$NAME is stopped"; exit 3; fi ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|try-restart|force-reload|status}" >&2
+        exit 1 ;;
+esac
+exit 0

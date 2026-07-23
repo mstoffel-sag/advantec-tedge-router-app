@@ -20,52 +20,40 @@ MOD_SETTINGS=$MOD_DIR/etc/settings
 [ -f "$MOD_SETTINGS" ] || cp "$MOD_DEFAULTS" "$MOD_SETTINGS"
 . "$MOD_SETTINGS"
 
-# Volatile locations for pid files and logs.
-if   [ -d /var/run ]; then PIDDIR=/var/run
-elif [ -d /run ];     then PIDDIR=/run
-else                       PIDDIR=/tmp
-fi
-LOGDIR=$(tedge config get logs.path 2>/dev/null || echo /var/log/tedge)
-[ -n "$LOGDIR" ] || LOGDIR=/var/log/tedge
+# Log location (the per-service scripts log under /var/log/tedge).
+LOGDIR=/var/log/tedge
 mkdir -p "$LOGDIR" /tmp/tedge 2>/dev/null || true
+MAPPER_LOG="$LOGDIR/tedge-mapper-c8y.log"
+
+# Persistent runtime state that MUST survive a module reinstall/upgrade.
+# ICR-OS replaces /opt/tedge wholesale on every Router App upgrade, so the device
+# certificate cannot live under it -- otherwise every update wipes the cert and,
+# with c8y-ca (the cert exists only on the device), the device drops off
+# Cumulocity and needs re-registration (a truck roll). /opt is a persistent
+# partition; a sibling dir OUTSIDE the module survives an upgrade because the
+# boot launcher /etc/init.d/module only ever descends into /opt/<dir>/etc/init
+# (and its `list` skips hyphenated names), so /opt/tedge-data is invisible to the
+# module system and untouched when the tedge module is removed/replaced.
+# See docs/SELF-UPDATE-ROLLBACK.md (sec 1).
+PERSIST_DIR=/opt/tedge-data
+CERT_DIR=$PERSIST_DIR/device-certs
 
 log() { /usr/bin/logger -t "$MOD_NAME" "$1" 2>/dev/null; echo "$1"; }
 
 # ---------------------------------------------------------------------------
-# Daemon supervision helpers
+# Service supervision
+#
+# The three daemons are controlled by the per-service scripts under
+# services-init.d/ (device-native: pidof + kill, no start-stop-daemon and no
+# runit -- neither exists on ICR-OS). Those scripts are the SINGLE start/stop
+# implementation, shared by boot (this script), by thin-edge via bin/tedgectl +
+# system.toml, and by direct invocation. Listed broker-first for start; stop
+# walks them in reverse.
 # ---------------------------------------------------------------------------
-pidfile() { echo "$PIDDIR/$MOD_NAME-$1.pid"; }
+SVC_DIR="$MOD_DIR/services-init.d"
+SERVICES="mosquitto tedge-mapper-c8y tedge-agent"
 
-is_running() {
-    pf=$(pidfile "$1")
-    [ -f "$pf" ] || return 1
-    kill -0 "$(cat "$pf" 2>/dev/null)" 2>/dev/null
-}
-
-# start_daemon <label> <command...>
-start_daemon() {
-    label=$1; shift
-    if is_running "$label"; then
-        echo "  $label already running"
-        return 0
-    fi
-    "$@" >> "$LOGDIR/$label.log" 2>&1 &
-    echo $! > "$(pidfile "$label")"
-    echo "  started $label (pid $!)"
-}
-
-# stop_daemon <label> <pkill-pattern>
-stop_daemon() {
-    label=$1; pattern=$2
-    pf=$(pidfile "$label")
-    if [ -f "$pf" ]; then
-        kill "$(cat "$pf" 2>/dev/null)" 2>/dev/null
-        rm -f "$pf"
-    fi
-    # Fallback in case the pid file was lost.
-    pkill -f "$pattern" 2>/dev/null || true
-    echo "  stopped $label"
-}
+svc() { [ -x "$SVC_DIR/S99$2" ] && "$SVC_DIR/S99$2" "$1"; }   # svc <action> <name>
 
 # ---------------------------------------------------------------------------
 # Provisioning (idempotent, runs on every start; network steps only when needed)
@@ -82,7 +70,54 @@ resolve_device_id() {
     fi
 }
 
+# Anchor the device certificate/key on the persistent store so a module
+# reinstall/upgrade never loses it. Idempotent; runs before every provisioning.
+anchor_persistent_certs() {
+    mkdir -p "$CERT_DIR" 2>/dev/null || true
+    chmod 700 "$CERT_DIR" 2>/dev/null || true
+
+    # One-time migration from the older in-module default location. Only helps
+    # when the old cert still exists (e.g. an in-place update); a full ICR-OS
+    # reinstall wipes /opt/tedge first, which is exactly why we relocate.
+    old_dir=$MOD_DIR/device-certs
+    if [ -f "$old_dir/tedge-certificate.pem" ] && [ ! -f "$CERT_DIR/tedge-certificate.pem" ]; then
+        cp -p "$old_dir"/tedge-*.pem "$CERT_DIR"/ 2>/dev/null || true
+        log "Migrated device certificate to persistent store $CERT_DIR"
+    fi
+
+    # Point tedge at the persistent cert/key (idempotent -- only write on change).
+    [ "$(tedge config get device.cert_path 2>/dev/null)" = "$CERT_DIR/tedge-certificate.pem" ] \
+        || tedge config set device.cert_path "$CERT_DIR/tedge-certificate.pem"
+    [ "$(tedge config get device.key_path 2>/dev/null)" = "$CERT_DIR/tedge-private-key.pem" ] \
+        || tedge config set device.key_path "$CERT_DIR/tedge-private-key.pem"
+}
+
+# thin-edge reads the device id from the certificate's CN, and our persistent
+# cert store survives reinstalls -- so once a device has a cert it keeps that id
+# (and therefore its Cumulocity name) forever, ignoring a newly-entered
+# MOD_TEDGE_DEVICE_ID. If the operator EXPLICITLY sets a device id that differs
+# from the current certificate's CN, treat the cert as stale and remove it so a
+# fresh certificate is issued for the new id (a re-registration). Only triggers
+# on an explicit, changed MOD_TEDGE_DEVICE_ID -- never when the id is derived.
+drop_cert_on_id_change() {
+    [ -n "$MOD_TEDGE_DEVICE_ID" ] || return 0
+    cp=$(tedge config get device.cert_path 2>/dev/null)
+    [ -f "$cp" ] || return 0
+    current=$(tedge config get device.id 2>/dev/null)   # = cert CN while a cert exists
+    if [ -n "$current" ] && [ "$current" != "$MOD_TEDGE_DEVICE_ID" ]; then
+        log "Device id change requested ('$current' -> '$MOD_TEDGE_DEVICE_ID'); removing old certificate to re-register"
+        rm -f "$cp" "$(tedge config get device.key_path 2>/dev/null)"
+    fi
+}
+
 configure() {
+    # Keep the device certificate on persistent storage (before the cert-exists
+    # checks below, so an upgraded device finds its cert and skips re-download).
+    anchor_persistent_certs
+
+    # Honour an explicit device-id change by dropping a now-stale certificate.
+    drop_cert_on_id_change
+
     # Cumulocity URL
     if [ -n "$MOD_TEDGE_C8Y_URL" ]; then
         url=$(normalize_url "$MOD_TEDGE_C8Y_URL")
@@ -145,6 +180,50 @@ EOT
     tedge refresh-bridges >/dev/null 2>&1 || true
 }
 
+# Work around a Cumulocity c8y-ca first-connect race. On a freshly
+# auto-registered device the built-in MQTT bridge sends its cloud SUBSCRIBEs
+# (s/ds operations, s/dat token, devicecontrol/notifications, ...) as soon as
+# it connects -- which can happen before Cumulocity has finished provisioning
+# the device's authorization. Those subscriptions are then refused
+# ("SubAck ... Failure") and the bridge does NOT retry them, so the mapper sits
+# connected but deaf: no inbound operations and no JWT token (every REST call
+# then fails 502). A fresh mapper connect once provisioning has completed clears
+# it, so after starting we watch the log briefly and bounce the mapper if we see
+# the refusal. Healthy connections return quickly; this only adds latency (and
+# restarts) on a genuinely racing first boot.
+heal_mapper_subscriptions() {
+    max_restarts=3
+    restarts=0
+    mark=$(wc -l < "$MAPPER_LOG" 2>/dev/null || echo 0)
+    waited=0
+    while [ "$waited" -lt 90 ]; do
+        sleep 3
+        waited=$((waited + 3))
+        new=$(awk -v n="$mark" 'NR>n' "$MAPPER_LOG" 2>/dev/null)
+
+        if echo "$new" | grep -Eq "\[cloud\].*SubAck.*Failure"; then
+            if [ "$restarts" -ge "$max_restarts" ]; then
+                log "cloud bridge still refusing subscriptions after $restarts restarts; will retry on next start"
+                return 0
+            fi
+            restarts=$((restarts + 1))
+            log "cloud bridge subscriptions refused (c8y provisioning not ready); restarting mapper ($restarts/$max_restarts)"
+            svc restart tedge-mapper-c8y
+            mark=$(wc -l < "$MAPPER_LOG" 2>/dev/null || echo 0)
+            waited=0
+            continue
+        fi
+
+        # A received JWT token proves the s/dat subscription was accepted, which
+        # only happens once the operational topics are authorized too.
+        if echo "$new" | grep -q "JWT token received"; then
+            log "cloud bridge healthy (operations and token channel up)"
+            return 0
+        fi
+    done
+    return 0
+}
+
 start_tedge() {
     log "Starting $MOD_NAME"
 
@@ -154,26 +233,43 @@ start_tedge() {
 
     configure || { log "Provisioning failed; not starting daemons"; return 1; }
 
-    # Local MQTT broker, then the c8y mapper (built-in TLS bridge to the cloud)
-    # and the device management agent.
-    start_daemon mosquitto        "$BIN/mosquitto" -c "$MOD_DIR/mosquitto.conf"
-    start_daemon tedge-mapper-c8y "$BIN/tedge-mapper" c8y
-    start_daemon tedge-agent      "$BIN/tedge-agent"
+    # Start the local MQTT broker first.
+    svc start mosquitto
+
+    # Bring up the Cumulocity link via thin-edge's own `tedge connect c8y`, the
+    # way the stock bundle's bootstrap does. connect creates the device in
+    # Cumulocity with its proper name/type (a direct, certificate-authenticated
+    # REST call) BEFORE any telemetry, then brings up the built-in bridge and
+    # starts the mapper -- so Cumulocity does not auto-register the device as
+    # "MQTT Device <id>". Idempotent via reconnect. If it fails (no network / not
+    # yet registered), start the mapper directly so we still run and retry.
+    if tedge reconnect c8y >/dev/null 2>&1; then
+        log "connected to Cumulocity (device created/verified by tedge connect)"
+    else
+        log "tedge connect c8y failed; starting mapper directly (will retry next boot)"
+        svc start tedge-mapper-c8y
+    fi
+
+    # Device management agent.
+    svc start tedge-agent
 
     log "$MOD_NAME started"
+
+    # Self-heal the c8y-ca first-connect subscription race (see the function).
+    heal_mapper_subscriptions
 }
 
 stop_tedge() {
     log "Stopping $MOD_NAME"
-    stop_daemon tedge-agent      "$BIN/tedge-agent"
-    stop_daemon tedge-mapper-c8y "$BIN/tedge-mapper c8y"
-    stop_daemon mosquitto        "$BIN/mosquitto"
+    svc stop tedge-agent
+    svc stop tedge-mapper-c8y
+    svc stop mosquitto
 }
 
 status_tedge() {
     rc=0
-    for s in mosquitto tedge-mapper-c8y tedge-agent; do
-        if is_running "$s"; then
+    for s in $SERVICES; do
+        if "$SVC_DIR/S99$s" status >/dev/null 2>&1; then
             echo "  $s: running"
         else
             echo "  $s: stopped"
@@ -196,6 +292,15 @@ case "$1" in
         sleep 1
         [ "$MOD_TEDGE_ENABLED" = "1" ] || { echo "$MOD_NAME is disabled (set MOD_TEDGE_ENABLED=1)"; exit 0; }
         start_tedge
+        ;;
+    apply)
+        # Invoked by the web UI after saving settings. A full restart takes ~30s
+        # (tedge connect + first-connect heal), which would block the CGI request
+        # and leave the browser on an empty/timed-out page. Kick the restart off
+        # in the background and return immediately; the UI reflects the new state
+        # once the service has settled.
+        nohup "$MOD_DIR/etc/init" restart >>"$LOGDIR/apply.log" 2>&1 &
+        echo "Configuration saved. thin-edge.io is restarting in the background."
         ;;
     status)
         echo "Module $MOD_NAME:"

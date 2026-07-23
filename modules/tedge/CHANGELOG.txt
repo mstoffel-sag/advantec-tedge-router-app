@@ -1,6 +1,152 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.10
+------
+* Fix: the web UI showed an empty/timed-out page after clicking Apply. The CGI
+  ran "etc/init restart" synchronously and waited for it; with the new startup
+  flow a restart takes ~30s (tedge connect + first-connect heal), longer than the
+  request could stay open. etc/init now has an "apply" action that launches the
+  restart in the background and returns immediately, and the config CGI calls
+  "apply" instead of "restart" -- so saving settings returns a page right away
+  while the service restarts. Verified on an ICR-4400: `etc/init apply` returns
+  in 0s and the background restart brings the service back up and connected.
+
+1.0.9
+-----
+* Fix (proper root cause of the "MQTT Device <id>" naming): the Router App
+  started the mapper directly and never ran `tedge connect c8y`. Stock thin-edge
+  runs it during bootstrap, and `tedge connect` creates the device in Cumulocity
+  with its proper name/type via a direct, certificate-authenticated REST call
+  ("Creating device in Cumulocity cloud") BEFORE any telemetry -- so Cumulocity
+  never auto-registers it as "MQTT Device <id>". Because we skipped connect, the
+  mapper's first telemetry triggered MQTT auto-registration and the placeholder
+  name stuck. etc/init now brings up the cloud link with `tedge connect c8y`
+  (via reconnect, idempotent) after starting the broker, then starts the agent;
+  it falls back to starting the mapper directly if connect fails (no network /
+  not yet registered) and retries next boot. The 1.0.8 inventory-rename
+  workaround is removed -- thin-edge names the device itself now.
+  Verified on an ICR-4400: after deleting the device object, `tedge connect`
+  recreated it as "adva" (type thin-edge.io), not "MQTT Device adva".
+
+1.0.8
+-----
+* Fix: the Cumulocity device name is now set to the device id instead of the
+  auto-assigned "MQTT Device <id>". A from-scratch install confirmed thin-edge
+  does NOT name the main device (it only sends inventory updates), so
+  Cumulocity's MQTT auto-registration creates it from the earliest telemetry as
+  "MQTT Device <id>" (type c8y_MQTTDevice). The 1.0.4 attempt (a te/device/main//
+  registration) is rejected by this flows-mapper as an unsupported twin update,
+  so etc/init now issues a direct c8y inventory update AFTER the mapper connects
+  (once the device object exists), renaming the device to its id and setting type
+  "thin-edge.io". Runs on every start (idempotent). Verified on an ICR-4400:
+  "MQTT Device adva" became "adva" (type thin-edge.io).
+
+1.0.7
+-----
+* Fix: fully remove the app's data when the Router App is deleted. The persistent
+  certificate store /opt/tedge-data (added in 1.0.3) is intentionally kept across
+  upgrades, but it must not linger after the app is deleted -- it holds the device
+  certificate and key. It cannot be removed in etc/uninstall (that also runs on an
+  upgrade, which would drop the cert). Instead etc/install now writes a small
+  self-cleaning guard, /opt/tedge-data/etc/init, which ICR-OS runs at boot via
+  /etc/init.d/module: on the first boot after /opt/tedge is gone (app deleted) it
+  deletes /opt/tedge-data, while leaving it untouched whenever tedge is still
+  installed (upgrade). Together with the existing uninstall cleanup (/usr/bin/tedge,
+  /etc/tedge, /etc/init.d/S99* links), deleting the app now removes everything.
+
+1.0.6
+-----
+* Fix: changing the configured device id had no effect -- the Cumulocity device
+  kept its original name/id no matter what was entered. thin-edge reads the
+  device id from the certificate's CN, and the persistent cert store
+  (/opt/tedge-data, added in 1.0.3) survives reinstalls, so an existing cert
+  pinned the device to its old id forever and a newly-entered MOD_TEDGE_DEVICE_ID
+  was ignored. etc/init now detects when MOD_TEDGE_DEVICE_ID is EXPLICITLY set to
+  a value different from the current certificate's CN and removes the stale
+  certificate so a fresh one is issued for the new id (i.e. a re-registration --
+  the new id must be registered in Cumulocity). Unchanged/derived ids keep the
+  persistent cert as before. NOTE: the device name in Cumulocity follows the
+  device id (certificate CN); thin-edge does not set a separate display name.
+* Fix: configuration snapshot/upload (and update) failed with "config file
+  /etc/tedge/plugins/tedge-configuration-plugin.toml does not exist". The tedge
+  binaries and the file config plugin are compiled with the default config dir
+  /etc/tedge, and tedge-agent invokes the file config plugin with
+  --config-dir /etc/tedge rather than the runtime TEDGE_CONFIG_DIR (/opt/tedge),
+  so the plugin looked in the wrong place. etc/install now symlinks
+  /etc/tedge -> /opt/tedge, so every tool that falls back to the default config
+  dir resolves the real config. This also makes the bare `tedge ...` CLI work
+  over SSH without --config-dir. Verified on an ICR-4400: the file config plugin
+  lists and reads the config types, and `tedge config get c8y.url` works with no
+  flags.
+
+1.0.4
+-----
+* Investigating device naming: on the test device Cumulocity showed the device as
+  "MQTT Device <id>" (type c8y_MQTTDevice) -- Cumulocity's MQTT auto-registration
+  names a device from the earliest telemetry when no named create precedes it.
+  A workaround that announces the name/type before the mapper connects (a
+  te/device/main// registration plus a c8y inventory update, both retained) is
+  present in etc/init but LEFT DISABLED (commented out), to first confirm whether
+  thin-edge names the main device correctly on a clean from-scratch install. If a
+  fresh install still shows "MQTT Device <id>", re-enable register_main_device in
+  etc/init (see the comment there).
+
+1.0.3
+-----
+* Fix: keep the device certificate across module reinstalls/upgrades. ICR-OS
+  replaces /opt/tedge wholesale on every Router App upgrade, which wiped
+  /opt/tedge/device-certs -- and with c8y-ca the certificate exists only on the
+  device, so each upgrade dropped the device from Cumulocity and required a
+  manual re-registration (a truck roll).
+    - The device certificate/key now live in /opt/tedge-data/device-certs, a
+      directory OUTSIDE the module tree on the persistent /opt partition. The
+      boot launcher (/etc/init.d/module) only descends into /opt/<dir>/etc/init,
+      so this sibling directory is invisible to the module system and survives a
+      tedge reinstall.
+    - etc/init points device.cert_path / device.key_path there on every start
+      (before the cert-exists check, so an upgraded device finds its cert and
+      skips re-download), migrating an existing in-module cert if present.
+    - etc/install creates the store; etc/uninstall intentionally leaves it in
+      place (an upgrade runs uninstall first, so removing it would defeat the
+      purpose).
+  Verified on an ICR-4400: cert issued into the persistent store, mapper
+  reconnects with a valid JWT. See docs/SELF-UPDATE-ROLLBACK.md (sec 1).
+
+1.0.2
+-----
+* Align service control with the Advantech ICR-OS init system. The upstream
+  bundle's service scripts assumed start-stop-daemon (services-init.d/S99*) or
+  runit (the default bin/tedgectl) -- neither exists on ICR-OS, so anything that
+  asked thin-edge to control a service (system.toml [init] -> tedgectl:
+  config-update service restarts, `tedge` connect/refresh-bridges, the restart
+  workflow) silently failed.
+    - Rewrote the per-service scripts (services-init.d/S99mosquitto,
+      S99tedge-mapper-c8y, S99tedge-agent) to be device-native: background the
+      daemon and track/stop it with pidof + kill, the same style as other
+      Router Apps (e.g. /opt/wadmp_client/etc/init). No start-stop-daemon.
+    - tedgectl is NOT modified: the bundle already ships a SysV init.d variant
+      (services-init.d/tedgectl); the build simply selects it as the active
+      bin/tedgectl (instead of the runit default), and etc/install symlinks the
+      S99 scripts into /etc/init.d so that SysV tedgectl resolves them.
+    - etc/init now uses the same per-service scripts for boot start/stop/status
+      (single implementation shared by boot, tedge, and direct use). This also
+      fixes the false "mosquitto: stopped" status (pid tracking now via pidof).
+  Verified on an ICR-4400: `tedgectl restart tedge-mapper-c8y` cycles and
+  reconnects the mapper, `tedge refresh-bridges` starts mosquitto through the
+  aligned chain, and status is truthful.
+
+1.0.1
+-----
+* Fix: self-heal the Cumulocity c8y-ca "first-connect race". On a freshly
+  auto-registered device the built-in MQTT bridge could subscribe to the cloud
+  operation/token topics before Cumulocity finished provisioning the device,
+  get those subscriptions refused (SubAck Failure), and never retry -- leaving
+  the mapper connected but unable to receive operations or a JWT token (REST
+  calls then failed with 502). The service now watches the mapper log after
+  start and restarts the mapper if it sees the refusal, so the device recovers
+  on its own instead of needing a manual restart.
+
 1.0.0
 -----
 * Initial release.

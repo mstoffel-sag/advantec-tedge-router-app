@@ -3,6 +3,11 @@
 MOD_DIR=/opt/relay
 TEDGE_DIR=/opt/tedge
 
+# Source the platform env so the tedge CLI resolves and TEDGE_CONFIG_DIR points
+# at /opt/tedge (the binary's built-in default /etc/tedge does not exist here),
+# otherwise the `tedge reconnect c8y` below cannot find the configuration.
+[ -f "$TEDGE_DIR/env" ] && . "$TEDGE_DIR/env"
+
 # Stop the agent if it is still running.
 [ -x "$MOD_DIR/etc/init" ] && "$MOD_DIR/etc/init" stop 2>/dev/null
 

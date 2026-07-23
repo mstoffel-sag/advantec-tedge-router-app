@@ -28,6 +28,13 @@ TWIN_BASE="${MOD_RELAY_TWIN_BASE:-te/device/main///twin}"
 canon() { case "$1" in CLOSED|closed|on|ON|1|true|TRUE|yes) echo CLOSED ;; *) echo OPEN ;; esac; }
 reflect() { tedge mqtt pub -r "$TWIN_BASE/$1" "$2" 2>/dev/null || true; }
 
+# IMPORTANT: this handler must print NOTHING to stdout. The thin-edge c8y mapper
+# feeds an operation command's stdout back into the operation's own fragment
+# (c8y_Relay / c8y_RelayArray), and Cumulocity then mirrors that fragment onto
+# the device managed object on success. Any human-readable output here therefore
+# overwrites the relay state in the MO -- e.g. c8y_RelayArray became the single
+# string "relay out0 -> ...", collapsing the RelayArray widget to one relay.
+# So relay-control output is sent to /dev/null; state is reported via reflect().
 MODE="${1:-}"; shift 2>/dev/null || true
 
 case "$MODE" in
@@ -35,20 +42,22 @@ case "$MODE" in
         STATE="${1:-}"
         [ -n "$STATE" ] || { echo "no relayState given" >&2; exit 2; }
         first=$(printf '%s\n' $OUTPUTS | head -n 1)
-        "$HERE/relay-control" "$STATE" "$first"
+        "$HERE/relay-control" "$STATE" "$first" >/dev/null
         reflect c8y_Relay "{\"relayState\":\"$(canon "$STATE")\"}"
         ;;
     relayarray)
         # Tolerate JSON (["CLOSED","OPEN"]) or bare (CLOSED,OPEN) rendering,
-        # possibly split across several arguments.
-        clean=$(printf '%s' "$*" | tr -d '[]" ' | tr -s ',')
+        # possibly split across several arguments. NOTE: `tr` is not present on
+        # ICR-OS, so strip brackets/quotes/spaces and squeeze commas with sed
+        # (the `]` must come first inside the bracket expression).
+        clean=$(printf '%s' "$*" | sed 's/[][" ]//g; s/,,*/,/g; s/^,//; s/,$//')
         [ -n "$clean" ] || { echo "empty c8y_RelayArray" >&2; exit 2; }
         # Drive each configured output from the matching array position.
         i=1; driven=""
         for pin in $OUTPUTS; do
             elem=$(printf '%s' "$clean" | awk -F, -v n="$i" 'NR==1{ if (n<=NF) print $n }')
             if [ -n "$elem" ]; then
-                "$HERE/relay-control" "$elem" "$pin"
+                "$HERE/relay-control" "$elem" "$pin" >/dev/null
                 driven="${driven:+$driven,}\"$(canon "$elem")\""
             fi
             i=$((i + 1))

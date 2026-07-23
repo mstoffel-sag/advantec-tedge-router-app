@@ -158,6 +158,30 @@ You can also edit `/opt/tedge/etc/settings` over SSH and run
 | `basic`        | Uses a device username + password (`MOD_TEDGE_DEVICE_USER` / `MOD_TEDGE_DEVICE_PASSWORD`). |
 | `self-signed`  | Creates a self-signed device certificate on the router. Upload it to Cumulocity from the **Upload Certificate** page (or with `tedge cert upload c8y --user <c8y-user>` over SSH). |
 
+## Device identity, upgrades & removal
+
+thin-edge.io identifies the device by its **certificate** — the device ID is the
+certificate's Common Name, and the Cumulocity **device name follows the device ID**
+(the app does not set a separate display name).
+
+So the certificate identity survives a routine app update — instead of being
+re-registered on every upgrade — the **device certificate and key live outside
+the module**, in `/opt/tedge-data/device-certs/`, on the router's persistent
+storage (not under `/opt/tedge`, which the router replaces wholesale on update).
+
+What that means in practice:
+
+| Action | What happens to the identity |
+|--------|------------------------------|
+| **Upgrade** (install a newer app over the existing one) | `/opt/tedge` is replaced but `/opt/tedge-data` is kept — the device reuses its certificate and reconnects as the **same device**. No re-registration. |
+| **Delete**, then **reboot** | A self-cleaning guard removes `/opt/tedge-data` (certificate **and** key) on the first boot after the app is gone — deleting it too. The app's footprint is then fully removed. |
+| **Delete, then reinstall without rebooting** | The certificate is still present, so the reinstalled app reuses it — same device, no re-registration. |
+| **Change the device ID** (`MOD_TEDGE_DEVICE_ID` set to a new value) | The app detects the mismatch with the stored certificate, discards it, and registers again under the new ID. **The new ID must first be registered in Cumulocity.** |
+
+> Because the wipe-on-delete happens on the **next boot** (the only hook that
+> runs once the module is gone), the certificate remains on disk between deleting
+> the app and rebooting. Reboot the router to complete removal.
+
 ## Operating
 
 Over SSH (the app also symlinks `tedge` onto the system `PATH`):
@@ -177,7 +201,9 @@ tail -f /var/log/tedge/*.log    # logs (mosquitto / mapper / agent)
 Bump `TEDGE_VERSION` in `packages/tedge/Makefile`, update
 `packages/tedge/version.txt` and `modules/tedge/CHANGELOG.txt`, then rebuild.
 Config files are shipped as `*.default` and are **not** overwritten on reinstall,
-so operator settings survive upgrades.
+so operator settings survive upgrades. The device certificate/key also survive
+(see [Device identity, upgrades & removal](#device-identity-upgrades--removal)),
+so upgrading does not re-register the device in Cumulocity.
 
 ## References
 

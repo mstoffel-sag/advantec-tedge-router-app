@@ -69,6 +69,12 @@ $(PKGNAME).$(PLATFORM).pkg:
 	@# both because they must not be modified and to avoid needless memory use.
 	@find $(DESTDIR)/tedge -type f ! -name tedge ! -name mosquitto \
 		-exec sed -i 's%@CONFIG_DIR@%$(CONFIG_DIR)%g' {} +
+	@# ICR-OS uses SysV init (no runit). The bundle ships two tedgectl variants:
+	@# bin/tedgectl (runit, the default that system.toml invokes) and
+	@# services-init.d/tedgectl (SysV init.d). Select thin-edge.io's own SysV
+	@# variant as the active one -- unchanged, just chosen for this init system.
+	@echo "  Selecting the SysV tedgectl variant"
+	@cp $(DESTDIR)/tedge/services-init.d/tedgectl $(DESTDIR)/tedge/bin/tedgectl
 	@install -d $(DESTDIR)/tedge/license
 	@printf 'thin-edge.io standalone %s (%s)\nSPDX-License-Identifier: Apache-2.0\nSee https://github.com/thin-edge/thin-edge.io\n' \
 		"$(TEDGE_VERSION)" "$(TEDGE_ARCH)" > $(DESTDIR)/tedge/license/$(PKGNAME).txt
