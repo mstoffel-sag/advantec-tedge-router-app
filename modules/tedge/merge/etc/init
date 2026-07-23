@@ -163,8 +163,13 @@ EOT
                 [ -n "$otp" ] || otp=$(printf "%s" "$dev_id" | md5sum | awk '{print $1}')
                 c8y_host=$(tedge config get c8y.url 2>/dev/null)
                 if [ -n "$c8y_host" ]; then
-                    log "Register this device in Cumulocity:"
-                    log "  https://$c8y_host/apps/devicemanagement/index.html#/deviceregistration?externalId=$dev_id&one-time-password=$otp"
+                    # Do NOT log the one-time password: log() writes to syslog
+                    # (/var/log/messages), which is itself retrievable from the
+                    # cloud via the log plugin. Log the external id only and tell
+                    # the operator where the OTP comes from.
+                    log "Register this device in Cumulocity (external id: $dev_id):"
+                    log "  https://$c8y_host/apps/devicemanagement/index.html#/deviceregistration?externalId=$dev_id"
+                    log "  Enter the one-time password from MOD_TEDGE_OTP (default: md5 of the device id); it is not logged."
                 fi
                 # Non-fatal: if the device is not registered / no network yet,
                 # this simply retries on the next start.

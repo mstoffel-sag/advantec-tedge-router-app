@@ -96,7 +96,10 @@ static void main_index(void)
   um_html_input_str("device_id", cfg.device_id);
 
   um_html_text("One-time password");
-  um_html_input_str("otp", cfg.otp);
+  // Masked like the device/c8y passwords -- the OTP is a registration secret.
+  // Empty pair-field: unlike a real password it must NOT be offered for
+  // browser autocomplete/save (it is single-use).
+  um_html_input_pwd("otp", cfg.otp, false, false, "");
 
   um_html_text("Device user");
   um_html_input_str("device_user", cfg.device_user);

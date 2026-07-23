@@ -1,6 +1,18 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.14
+------
+* Security: the one-time password (OTP) is no longer exposed.
+  - The web UI "One-time password" field was a plain text input (visible on
+    screen and in the page source); it is now a masked password input like the
+    device/c8y password fields.
+  - etc/init logged the full Cumulocity device-registration URL including
+    `one-time-password=<otp>` via log(), which writes to syslog
+    (/var/log/messages) -- itself retrievable from the cloud through the log
+    plugin. It now logs the external id and the registration URL WITHOUT the OTP,
+    and points the operator at MOD_TEDGE_OTP (default md5 of the device id).
+
 1.0.13
 ------
 * Relay control folded into the platform module (the standalone `relay`
