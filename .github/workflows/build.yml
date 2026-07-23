@@ -6,9 +6,9 @@ name: build
 #
 # Each matrix job sets up the Advantech build environment (cross toolchains +
 # Router App SDK) exactly like scripts/setup-build-env.sh and produces the
-# platform module (images/tedge/) plus every extension module discovered from
-# modules/Rules.mk (e.g. images/relay/), uploaded as build artifacts. Pushing a
-# tag (v*) additionally publishes all Router Apps to a GitHub Release.
+# platform module (images/tedge/) plus any extension modules discovered from
+# modules/Rules.mk, uploaded as build artifacts. Pushes to main and version tags
+# (v*) also publish the Router Apps as raw .tgz GitHub Release assets.
 
 on:
   push:
@@ -62,8 +62,10 @@ jobs:
       - name: Upload Router Apps
         uses: actions/upload-artifact@v4
         with:
-          # The platform module (tedge) and every extension module (e.g. relay)
-          # are discovered from modules/Rules.mk and built by the step above.
+          # The platform module (tedge) and any extension modules are discovered
+          # from modules/Rules.mk and built by the step above. NOTE: GitHub zips
+          # this artifact on download; for a raw .tgz use the Release assets
+          # (see the release job) or `gh run download`.
           name: routerapps-${{ matrix.platform }}
           path: advantec-tedge-router-app/images/*/*.${{ matrix.platform }}.tgz
           if-no-files-found: error
@@ -71,7 +73,17 @@ jobs:
   release:
     name: publish release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    # Publish the built Router Apps as GitHub *Release* assets, which are served
+    # as-is -- a raw, directly-downloadable `.tgz` with NO zip envelope (unlike
+    # CI run artifacts, which GitHub always wraps in a .zip). A version tag makes
+    # a normal release; a push to main (or a manual run) refreshes a rolling
+    # "latest" prerelease so the newest tarballs are always one click away. PR
+    # builds get only the (zipped) CI artifact from the build job above.
+    if: >-
+      github.event_name != 'pull_request' &&
+      (startsWith(github.ref, 'refs/tags/') ||
+       github.ref == 'refs/heads/main' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -79,10 +91,22 @@ jobs:
       - name: Download all Router Apps
         uses: actions/download-artifact@v4
         with:
+          # Downloading via actions/download-artifact extracts the artifacts, so
+          # `artifacts/**/*.tgz` are the raw tarballs (not the zipped envelope).
           path: artifacts
 
-      - name: Publish GitHub Release
+      - name: Publish versioned release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*.tgz
           generate_release_notes: true
+
+      - name: Refresh rolling "latest" build (main / manual)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: true
+          files: artifacts/**/*.tgz
