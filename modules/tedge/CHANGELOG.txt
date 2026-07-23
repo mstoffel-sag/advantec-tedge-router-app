@@ -1,6 +1,19 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.8
+-----
+* Fix: the Cumulocity device name is now set to the device id instead of the
+  auto-assigned "MQTT Device <id>". A from-scratch install confirmed thin-edge
+  does NOT name the main device (it only sends inventory updates), so
+  Cumulocity's MQTT auto-registration creates it from the earliest telemetry as
+  "MQTT Device <id>" (type c8y_MQTTDevice). The 1.0.4 attempt (a te/device/main//
+  registration) is rejected by this flows-mapper as an unsupported twin update,
+  so etc/init now issues a direct c8y inventory update AFTER the mapper connects
+  (once the device object exists), renaming the device to its id and setting type
+  "thin-edge.io". Runs on every start (idempotent). Verified on an ICR-4400:
+  "MQTT Device adva" became "adva" (type thin-edge.io).
+
 1.0.7
 -----
 * Fix: fully remove the app's data when the Router App is deleted. The persistent

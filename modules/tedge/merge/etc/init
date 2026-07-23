@@ -224,37 +224,27 @@ heal_mapper_subscriptions() {
     return 0
 }
 
-# --------------------------------------------------------------------------
-# DISABLED pending a from-scratch test of thin-edge's native device naming.
+# Set the Cumulocity device name/type to the device id.
 #
-# Symptom this addressed: the device showed up in Cumulocity as
-# "MQTT Device <id>" (type c8y_MQTTDevice) -- Cumulocity's MQTT auto-registration
-# names the device from the earliest telemetry when no named create precedes it.
-# The workaround below announced the name/type (via a te/device/main//
-# registration and a c8y inventory update, retained, before the mapper connects).
-#
-# We expect thin-edge to register the main device with its name on a clean
-# install, so this is left commented out for that test. If a fresh install still
-# shows "MQTT Device <id>", re-enable by uncommenting register_main_device and
-# calling it between `svc start mosquitto` and `svc start tedge-mapper-c8y`.
-#
-# register_main_device() {
-#     dev_id=$(tedge config get device.id 2>/dev/null)
-#     [ -n "$dev_id" ] || { log "WARN: device.id unknown; skipping main-device registration"; return 0; }
-#     dev_type=$(tedge config get device.type 2>/dev/null)
-#     [ -n "$dev_type" ] || dev_type="thin-edge.io"
-#     i=0
-#     while [ "$i" -lt 10 ]; do
-#         tedge mqtt pub -r "te/device/main//" \
-#             "{\"@type\":\"device\",\"name\":\"$dev_id\",\"type\":\"$dev_type\"}" 2>/dev/null && break
-#         i=$((i + 1)); sleep 1
-#     done
-#     tedge mqtt pub -r "c8y/inventory/managedObjects/update/$dev_id" \
-#         "{\"name\":\"$dev_id\",\"type\":\"$dev_type\"}" 2>/dev/null \
-#         && log "Announced main device '$dev_id' (type $dev_type)" \
-#         || log "WARN: main-device name not announced (broker not ready)"
-# }
-# --------------------------------------------------------------------------
+# thin-edge (this 2.0.1 flows mapper) never registers the MAIN device with a
+# name -- it only sends inventory updates -- so Cumulocity's MQTT auto-
+# registration creates the device from the earliest telemetry and names it
+# "MQTT Device <id>" (type c8y_MQTTDevice), which otherwise sticks. Tested on a
+# clean install: thin-edge does NOT name it, and a te/device/main// registration
+# is rejected as an unsupported twin update. The reliable fix is a direct c8y
+# inventory update, applied AFTER the mapper has connected (so the device object
+# exists): it renames the device to its id and sets type "thin-edge.io". Runs on
+# every start (idempotent); on a fresh registration the name settles within a few
+# seconds of first connect.
+set_c8y_device_name() {
+    dev_id=$(tedge config get device.id 2>/dev/null)
+    [ -n "$dev_id" ] || return 0
+    dev_type=$(tedge config get device.type 2>/dev/null)
+    [ -n "$dev_type" ] || dev_type="thin-edge.io"
+    tedge mqtt pub "c8y/inventory/managedObjects/update/$dev_id" \
+        "{\"name\":\"$dev_id\",\"type\":\"$dev_type\"}" 2>/dev/null \
+        && log "Set Cumulocity device name to '$dev_id' (type $dev_type)"
+}
 
 start_tedge() {
     log "Starting $MOD_NAME"
@@ -267,14 +257,16 @@ start_tedge() {
 
     # Local MQTT broker, then the c8y mapper (built-in TLS bridge to the cloud)
     # and the device management agent -- via the shared per-service scripts.
-    # (Main-device naming is left to thin-edge; see the disabled
-    # register_main_device above.)
     for s in $SERVICES; do svc start "$s"; done
 
     log "$MOD_NAME started"
 
     # Self-heal the c8y-ca first-connect subscription race (see the function).
     heal_mapper_subscriptions
+
+    # Rename the device away from Cumulocity's auto-assigned "MQTT Device <id>"
+    # (the device object now exists after the mapper connected). See the function.
+    set_c8y_device_name
 }
 
 stop_tedge() {
