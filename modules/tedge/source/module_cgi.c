@@ -154,7 +154,11 @@ static void main_set(void)
 
   if (input_ok) {
     if (module_cfg_save(&cfg)) {
-      ok = !um_process_exec(MODULE_INIT, "restart");
+      // Use "apply", not "restart": a full restart takes ~30s (tedge connect +
+      // first-connect heal) and would block this CGI request, leaving the
+      // browser on an empty/timed-out page. "apply" kicks the restart off in the
+      // background and returns immediately.
+      ok = !um_process_exec(MODULE_INIT, "apply");
     }
   }
 

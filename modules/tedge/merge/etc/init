@@ -293,6 +293,15 @@ case "$1" in
         [ "$MOD_TEDGE_ENABLED" = "1" ] || { echo "$MOD_NAME is disabled (set MOD_TEDGE_ENABLED=1)"; exit 0; }
         start_tedge
         ;;
+    apply)
+        # Invoked by the web UI after saving settings. A full restart takes ~30s
+        # (tedge connect + first-connect heal), which would block the CGI request
+        # and leave the browser on an empty/timed-out page. Kick the restart off
+        # in the background and return immediately; the UI reflects the new state
+        # once the service has settled.
+        nohup "$MOD_DIR/etc/init" restart >>"$LOGDIR/apply.log" 2>&1 &
+        echo "Configuration saved. thin-edge.io is restarting in the background."
+        ;;
     status)
         echo "Module $MOD_NAME:"
         status_tedge

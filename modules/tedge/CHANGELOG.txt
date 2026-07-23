@@ -1,6 +1,17 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.10
+------
+* Fix: the web UI showed an empty/timed-out page after clicking Apply. The CGI
+  ran "etc/init restart" synchronously and waited for it; with the new startup
+  flow a restart takes ~30s (tedge connect + first-connect heal), longer than the
+  request could stay open. etc/init now has an "apply" action that launches the
+  restart in the background and returns immediately, and the config CGI calls
+  "apply" instead of "restart" -- so saving settings returns a page right away
+  while the service restarts. Verified on an ICR-4400: `etc/init apply` returns
+  in 0s and the background restart brings the service back up and connected.
+
 1.0.9
 -----
 * Fix (proper root cause of the "MQTT Device <id>" naming): the Router App
