@@ -119,6 +119,48 @@ if [ -x "$MOD_DIR/bin/tedge-config-register" ] && [ -f "$MOD_DIR/etc/relay" ]; t
 fi
 
 # ---------------------------------------------------------------------------
+# Container plugin (tedge-container-plugin, folded into this platform module).
+#
+# The plugin is a single multi-call binary at bin/tedge-container. It selects
+# its mode from argv[0], so the container / container-group / container-image
+# software-management plugins are just symlinks to it under sm-plugins/ (the
+# same directory the thin-edge.io bundle uses for its executable/archive/flow
+# plugins). tedge-agent discovers them there and offers those software types to
+# Cumulocity. The monitoring daemon (`tedge-container run`) is started
+# separately by etc/init (gated by etc/container). See docs/EXTENSION-API.md.
+# ---------------------------------------------------------------------------
+if [ -x "$MOD_DIR/bin/tedge-container" ]; then
+    for p in container container-group container-image; do
+        ln -sf "$MOD_DIR/bin/tedge-container" "$MOD_DIR/sm-plugins/$p"
+    done
+    # Log plugins (per-container / per-compose-project log retrieval) and the
+    # sm-plugin entrypoints must be executable.
+    chmod +x "$MOD_DIR/log-plugins/container" "$MOD_DIR/log-plugins/container-group" 2>/dev/null || true
+
+    # Persistent state dir for the plugin (compose project files, registry
+    # credentials). Lives under the persistent store so it survives a module
+    # upgrade (matches data_dir in plugins/tedge-container-plugin.toml).
+    mkdir -p /opt/tedge-data/tedge-container-plugin 2>/dev/null || true
+
+    # Cloud-managed configuration (Pattern C): the daemon gate (etc/container)
+    # and the plugin's full config (.toml). Neither holds secrets. The registry
+    # credentials file is deliberately NOT registered.
+    if [ -x "$MOD_DIR/bin/tedge-config-register" ]; then
+        [ -f "$MOD_DIR/etc/container" ] && \
+            "$MOD_DIR/bin/tedge-config-register" add container "$MOD_DIR/etc/container" container || true
+        [ -f "$MOD_DIR/plugins/tedge-container-plugin.toml" ] && \
+            "$MOD_DIR/bin/tedge-config-register" add tedge-container-plugin \
+                "$MOD_DIR/plugins/tedge-container-plugin.toml" tedge-container-plugin || true
+    fi
+
+    # Cloud-retrievable daemon log (Pattern D).
+    if [ -x "$MOD_DIR/bin/tedge-log-register" ]; then
+        "$MOD_DIR/bin/tedge-log-register" add tedge-container \
+            "/var/log/tedge/tedge-container.log" tedge-container || true
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Wire the per-service scripts into /etc/init.d so thin-edge.io's own SysV
 # tedgectl (which system.toml invokes for service control) resolves them by
 # name for every action -- not only after an `enable`. These links are NOT

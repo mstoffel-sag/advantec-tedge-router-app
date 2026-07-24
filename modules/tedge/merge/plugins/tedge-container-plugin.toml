@@ -1,0 +1,122 @@
+# tedge-container-plugin configuration.
+#
+# Read by both the container software-management plugins (sm-plugins/container*)
+# and the monitoring daemon (`tedge-container run`, started by the platform's
+# etc/init when MOD_CONTAINER_ENABLED=1). Paths are the on-router layout
+# (/opt/tedge is the config dir; /etc/tedge is symlinked to it). This file is
+# registered with thin-edge.io's configuration plugin as the
+# "tedge-container-plugin" configuration type, so it can be edited from
+# Cumulocity (Device Management > Configuration). It contains no secrets.
+
+# Log level. values=debug, info, warn, error
+log_level = "info"
+
+# Service name used to show the status of the service
+service_name = "tedge-container-plugin"
+
+# Data directory used to store state such as docker compose project files. The
+# first writable directory whose parent exists is used. /opt/tedge-data is the
+# platform's persistent store (survives a module upgrade/reinstall); /var is a
+# tmpfs fallback that does not persist across reboots.
+data_dir = ["/opt/tedge-data/tedge-container-plugin", "/var/tedge-container-plugin"]
+
+# Remove the legacy tedge-container-monitor service
+delete_legacy = true
+
+[filter.include]
+# Only include containers matching the given names (as regex)
+names = [ ]
+
+# Only include containers with any of the given labels
+labels = [ ]
+
+[filter.exclude]
+# Exclude containers where the name matches the given regex patterns
+names = [ "^buildx.*" ]
+
+# Exclude containers which have any of the given labels
+labels = [ "tedge.ignore" ]
+
+[container_image]
+# Enable the container-image software management plugin
+# which allows users to just install the container image but not run it
+enabled = false
+
+[client]
+# Certificate key/cert used to connect to local thin-edge.io services (only used
+# if the files exist).
+key = "/opt/tedge/device-certs/local-tedge.key"
+cert_file = "/opt/tedge/device-certs/local-tedge.crt"
+  [client.http]
+  # thin-edge.io HTTP host/port operated by the tedge-agent on the main device
+  host = "127.0.0.1"
+  port = 8000
+
+  [client.mqtt]
+  # thin-edge.io MQTT host
+  host = "127.0.0.1"
+  # 0 = auto-detection, either 8883 when using certificates, or 1883 (no certificates)
+  port = 0
+
+  [client.c8y]
+  # thin-edge.io c8y local proxy host/port
+  host = "127.0.0.1"
+  port = 8001
+
+[container]
+# Custom container engine host. If missing or blank, the socket is auto detected
+# (e.g. unix:///run/podman/podman.sock or the docker socket).
+#host = "unix:///run/podman/podman.sock"
+
+# Always try pulling the image without checking if a local image already exists
+alwayspull = false
+
+# Shared network which each container will be joined to
+network = "tedge"
+
+# Prune any unused images after creating/deleting the containers
+pruneimages = true
+
+# Number of daemon-initiated restarts since the last healthy state required
+# to declare a crash loop and raise a CRITICAL alarm. 0 = use the default (5).
+crash_loop_threshold = 3
+
+[metrics]
+# Enable/disable container telemetry metrics such as memory etc. Regardless of
+# this value, the container status is still sent, but the measurements are not.
+enabled = true
+
+# How often the container status/telemetry is collected (minimum interval).
+interval = "300s"
+
+[reconcile]
+# How often the full container state is reconciled with thin-edge.io and the
+# cloud, independently of container engine events or MQTT messages. Minimum
+# "60s". Set to "0" to disable the reconcile loop.
+interval = "30m"
+
+# How long to wait before retrying a cloud sync after a failure. Minimum "5s".
+# Set to "0" to disable the failure-driven retry.
+retry_interval = "30s"
+
+[events]
+# Enable/disable publishing of container engine events
+enabled = true
+
+[delete_from_cloud]
+# Enable/disable deletion of services from the cloud when a container is removed
+enabled = true
+# Delete orphaned services (related to containers) from the cloud
+orphans = true
+# Minimum time between routine checks for orphaned cloud services. "0" = every update.
+orphans_interval = "1h"
+
+[container_group]
+# Whether the thin-edge service name for container-group services is derived from
+# the module name stored at install time (true) or the compose project name (false).
+use_module_name = false
+
+[registry]
+# Path to the file containing container registry credentials (holds secrets;
+# NOT registered for cloud configuration management).
+credentials_path = "/opt/tedge-data/tedge-container-plugin/credentials.toml"

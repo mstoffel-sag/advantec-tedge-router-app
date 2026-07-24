@@ -1,0 +1,20 @@
+tedge-container-plugin release pinned for this Router App.
+
+  version: 2.9.0
+  source:  https://github.com/thin-edge/tedge-container-plugin/releases/tag/2.9.0
+
+The plugin is the "ng" (next generation) build: a single, statically linked Go
+multi-call binary that provides both the container / container-group /
+container-image software-management plugins and the container monitoring daemon
+(`tedge-container run`). Only the plain binary tarball is used here; the
+sm-plugin names, config .toml and log plugins are shipped as static files by the
+tedge platform module (modules/tedge/merge) and wired up by its etc/init.
+
+Architectures used per ICR platform (tedge-container release asset suffix):
+  v2i  -> tedge-container_<ver>_linux_arm_v5.tar.gz
+  v3   -> tedge-container_<ver>_linux_arm_v7.tar.gz
+  v4   -> tedge-container_<ver>_linux_arm64.tar.gz
+  v4i  -> tedge-container_<ver>_linux_arm64.tar.gz   (ICR-1642)
+
+To upgrade, bump CONTAINER_VERSION in packages/tedge-container/Makefile, update
+this file and modules/tedge/CHANGELOG.txt, then rebuild.

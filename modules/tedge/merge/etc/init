@@ -299,6 +299,71 @@ start_relay() {
     log "relay started (outputs: $outs)"
 }
 
+# ---------------------------------------------------------------------------
+# Container plugin monitoring daemon (optional, enabled by default)
+#
+# `tedge-container run` watches the container engine and reports the status +
+# telemetry of managed containers to Cumulocity as services. The container /
+# container-group software-management plugins (sm-plugins/, wired by etc/install)
+# work independently of this daemon -- they are invoked on demand by tedge-agent
+# for Cumulocity software operations. The container engine on ICR-OS is provided
+# by the separately-installed Advantech Docker Router App (another /opt/<module>),
+# so the monitor is started ONLY when that app is detected; otherwise it is
+# skipped (a router without it still installs cleanly). Config in etc/container
+# (gate) + the plugin .toml. Same device-native stop as the other pollers --
+# pidof + kill, never pkill.
+# ---------------------------------------------------------------------------
+CONTAINER_CONF="$MOD_DIR/etc/container"
+CONTAINER_TOML="$MOD_DIR/plugins/tedge-container-plugin.toml"
+CONTAINER_PROC=tedge-container   # the daemon's process name (comm); pidof matches it
+DOCKER_APP_DIR=/opt/docker       # the Advantech Docker Router App's install dir
+
+container_enabled() {
+    [ -f "$CONTAINER_CONF" ] || return 1
+    enabled=$(. "$CONTAINER_CONF"; echo "${MOD_CONTAINER_ENABLED:-1}")
+    [ "$enabled" = "1" ]
+}
+
+# Detect the container engine. On ICR-OS it is supplied by the Advantech Docker
+# Router App, installed as its own /opt/docker module -- so its presence is the
+# signal that a container engine is available. An explicit engine host set in the
+# [container] section of the plugin .toml overrides this (scoped with awk so it
+# is not confused with the [client] host = "127.0.0.1" entries).
+docker_app_present() {
+    if [ -f "$CONTAINER_TOML" ]; then
+        host=$(awk '
+            /^[[:space:]]*\[/ { insec = ($0 ~ /^[[:space:]]*\[container\][[:space:]]*$/) }
+            insec && /^[[:space:]]*host[[:space:]]*=/ {
+                sub(/^[^=]*=[[:space:]]*/, ""); gsub(/"/, ""); print; exit
+            }' "$CONTAINER_TOML")
+        [ -n "$host" ] && return 0
+    fi
+    [ -d "$DOCKER_APP_DIR" ]
+}
+
+container_running() { pidof "$CONTAINER_PROC" >/dev/null 2>&1; }
+
+stop_container() {
+    container_running || return 0
+    kill $(pidof "$CONTAINER_PROC") 2>/dev/null
+}
+
+start_container() {
+    [ -x "$BIN/tedge-container" ] || return 0
+    container_enabled || { log "container monitor disabled (set MOD_CONTAINER_ENABLED=1 in etc/container)"; return 0; }
+    if ! docker_app_present; then
+        log "container monitor: Advantech Docker Router App not detected ($DOCKER_APP_DIR); not starting"
+        return 0
+    fi
+    stop_container   # never leave two daemons running after a restart
+    # The Docker Router App keeps its CLIs (docker, docker-compose) under
+    # /opt/docker/bin, which is not on the default PATH; prepend it so any CLI
+    # shell-out resolves (the daemon otherwise talks to /var/run/docker.sock).
+    PATH="$DOCKER_APP_DIR/bin:$PATH" \
+        "$BIN/tedge-container" run --config "$CONTAINER_TOML" >> "$LOGDIR/tedge-container.log" 2>&1 &
+    log "container monitor started"
+}
+
 start_tedge() {
     log "Starting $MOD_NAME"
 
@@ -334,6 +399,9 @@ start_tedge() {
     # Relay control: seed the widget + start the reflector (gated by etc/relay).
     start_relay
 
+    # Container monitoring daemon (gated by etc/container + engine presence).
+    start_container
+
     log "$MOD_NAME started"
 
     # Self-heal the c8y-ca first-connect subscription race (see the function).
@@ -342,6 +410,7 @@ start_tedge() {
 
 stop_tedge() {
     log "Stopping $MOD_NAME"
+    stop_container
     stop_relay
     stop_metrics
     svc stop tedge-agent
@@ -368,6 +437,11 @@ status_tedge() {
         if relay_running; then echo "  relay-monitor: running"; else echo "  relay-monitor: stopped"; fi
     else
         echo "  relay-monitor: disabled"
+    fi
+    if container_enabled; then
+        if container_running; then echo "  tedge-container: running"; else echo "  tedge-container: stopped"; fi
+    else
+        echo "  tedge-container: disabled"
     fi
     return $rc
 }

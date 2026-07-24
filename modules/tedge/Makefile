@@ -6,4 +6,9 @@ include ../../Rules.mk
 # finally producing images/tedge/tedge.<platform>.tgz
 INSTALL += ../../packages/tedge/*.$(PLATFORM).pkg
 
+# The tedge-container-plugin binary (folded into this platform module). Its pkg
+# payload unpacks into tmp/opt/tedge/bin; the sm-plugins, config .toml and log
+# plugins ship in merge/ and are wired up by etc/init + etc/install.
+INSTALL += ../../packages/tedge-container/*.$(PLATFORM).pkg
+
 $(eval $(build-module))

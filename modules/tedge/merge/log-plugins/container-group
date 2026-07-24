@@ -1,0 +1,4 @@
+#!/bin/sh
+# thin-edge.io log plugin: retrieve logs of managed container-group (compose)
+# projects from Cumulocity. Delegates to the tedge-container multi-call binary.
+exec /opt/tedge/bin/tedge-container log-plugins container-group "$@"
