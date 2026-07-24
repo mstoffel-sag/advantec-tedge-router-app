@@ -348,6 +348,24 @@ stop_container() {
     kill $(pidof "$CONTAINER_PROC") 2>/dev/null
 }
 
+# Wait for tedge-agent's local HTTP API (te/v1/entities) to accept connections.
+# The plugin registers its container services there on startup; if it launches
+# before the agent has bound the port it logs a burst of "connection refused"
+# and defers the initial sync to the 30m reconcile. Poll the listening socket
+# (netstat -- busybox has no curl/nc here) for a bounded time, then start
+# regardless (the plugin still retries). Port from http.client.port (default 8000).
+wait_agent_http() {
+    port=$(tedge config get http.client.port 2>/dev/null); [ -n "$port" ] || port=8000
+    i=0
+    while [ "$i" -lt 30 ]; do
+        netstat -ltn 2>/dev/null | grep -qE "[.:]$port[[:space:]]" && return 0
+        sleep 1
+        i=$((i + 1))
+    done
+    log "container monitor: tedge-agent HTTP (:$port) not ready after ${i}s; starting anyway"
+    return 0
+}
+
 start_container() {
     [ -x "$BIN/tedge-container" ] || return 0
     container_enabled || { log "container monitor disabled (set MOD_CONTAINER_ENABLED=1 in etc/container)"; return 0; }
@@ -356,6 +374,7 @@ start_container() {
         return 0
     fi
     stop_container   # never leave two daemons running after a restart
+    wait_agent_http  # avoid a startup race with the agent's local HTTP API
     # The Docker Router App keeps its CLIs (docker, docker-compose) under
     # /opt/docker/bin, which is not on the default PATH; prepend it so any CLI
     # shell-out resolves (the daemon otherwise talks to /var/run/docker.sock).

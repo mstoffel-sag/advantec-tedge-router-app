@@ -22,7 +22,12 @@ thin-edge.io Router App - Changelog
       monitor only starts when it is present (an explicit [container] host in the
       .toml overrides). On a router without it the daemon is skipped with a log
       line, so the app still installs cleanly. Logs to
-      /var/log/tedge/tedge-container.log.
+      /var/log/tedge/tedge-container.log. Before launching, etc/init waits (up to
+      30s) for tedge-agent's local HTTP API (http.client.port, default 8000) to
+      accept connections, avoiding a boot-time race where the plugin's initial
+      container-service registration would otherwise fail with "connection
+      refused" and defer to the 30m reconcile. /opt/docker/bin is prepended to
+      the daemon's PATH so the Docker CLIs resolve.
     - Config lives in plugins/tedge-container-plugin.toml (data_dir points at the
       persistent store /opt/tedge-data/tedge-container-plugin so compose state
       survives a module upgrade). Both etc/container and the .toml are registered
