@@ -1,6 +1,41 @@
 thin-edge.io Router App - Changelog
 ===================================
 
+1.0.15
+------
+* Container management: the tedge-container-plugin (upstream "ng" build, pinned
+  at 2.9.0) is now folded into the platform module. A new package
+  packages/tedge-container fetches the matching statically-linked binary per
+  architecture (arm_v5/arm_v7/arm64) and lays it at bin/tedge-container; the
+  tedge module INSTALLs it alongside the standalone runtime.
+    - Software management: the container / container-group / container-image
+      sm-plugins are symlinked to the multi-call binary by etc/install (into the
+      same sm-plugins/ dir the bundle uses for executable/archive/flow), so
+      containers and docker-compose projects can be installed/removed/updated
+      from Cumulocity's Software tab. Available regardless of the monitor flag.
+    - Monitoring daemon: etc/init starts `tedge-container run` after the agent
+      (start_container/stop_container, shown in status as tedge-container),
+      reporting container status + telemetry to Cumulocity as services. Gated by
+      a new etc/container file (MOD_CONTAINER_ENABLED, default 1) AND by
+      detection of the Advantech Docker Router App -- the container engine on
+      ICR-OS is provided by that separately-installed /opt/docker module, so the
+      monitor only starts when it is present (an explicit [container] host in the
+      .toml overrides). On a router without it the daemon is skipped with a log
+      line, so the app still installs cleanly. Logs to
+      /var/log/tedge/tedge-container.log. Before launching, etc/init waits (up to
+      30s) for tedge-agent's local HTTP API (http.client.port, default 8000) to
+      accept connections, avoiding a boot-time race where the plugin's initial
+      container-service registration would otherwise fail with "connection
+      refused" and defer to the 30m reconcile. /opt/docker/bin is prepended to
+      the daemon's PATH so the Docker CLIs resolve.
+    - Config lives in plugins/tedge-container-plugin.toml (data_dir points at the
+      persistent store /opt/tedge-data/tedge-container-plugin so compose state
+      survives a module upgrade). Both etc/container and the .toml are registered
+      as cloud-editable configuration types ("container" / "tedge-container-plugin");
+      the daemon log is registered for c8y_LogfileRequest; per-container log
+      retrieval ships as log-plugins/container(-group). No secrets are registered
+      (the registry credentials file is intentionally excluded).
+
 1.0.14
 ------
 * Security: the one-time password (OTP) is no longer exposed.

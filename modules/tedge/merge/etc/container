@@ -1,0 +1,24 @@
+# thin-edge.io Router App -- container plugin configuration.
+#
+# Controls the built-in tedge-container-plugin: the container / container-group
+# software-management plugins (always available; used on demand by Cumulocity
+# software operations) and the container monitoring daemon `tedge-container run`,
+# which reports the status and telemetry of running containers to Cumulocity.
+# Started by the module's etc/init when MOD_CONTAINER_ENABLED=1. This file is
+# registered with thin-edge.io's configuration plugin as the "container"
+# configuration type, so it can be edited from Cumulocity (Device Management >
+# Configuration) as well as over SSH. It contains no secrets.
+#
+# Detailed plugin behaviour (filters, metrics interval, network, ...) lives in
+# /opt/tedge/plugins/tedge-container-plugin.toml, also cloud-editable (config
+# type "tedge-container-plugin").
+#
+# Apply changes with:  /opt/tedge/etc/init restart
+
+# Enable the container monitoring daemon (1 = enabled, 0 = disabled). When
+# enabled, etc/init starts `tedge-container run` after the tedge-agent -- but
+# only if the Advantech Docker Router App (which provides the container engine)
+# is detected on the router (its /opt/docker module dir); otherwise the daemon
+# is skipped with a log message. The software-management plugins (install/remove
+# containers from Cumulocity) work regardless of this flag.
+MOD_CONTAINER_ENABLED=1

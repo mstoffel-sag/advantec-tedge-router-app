@@ -18,11 +18,15 @@ Once installed and enabled, the app:
 - forwards telemetry, events and alarms,
 - enables remote device management: configuration, log collection, software
   management and remote commands,
+- manages **containers** (Docker/Podman) from Cumulocity via the bundled
+  [tedge-container-plugin](https://github.com/thin-edge/tedge-container-plugin)
+  (see [Container management](#container-management) below),
 - connects securely using thin-edge.io's **built-in MQTT bridge over TLS** (the
   bundled Mosquitto is only the local broker, so no SSL config is needed on it).
 
 It supervises three daemons directly (no dependency on the host init system or
-runit): `mosquitto`, `tedge-mapper-c8y`, and `tedge-agent`.
+runit): `mosquitto`, `tedge-mapper-c8y`, and `tedge-agent` — plus, when a
+container engine is present, the `tedge-container` monitoring daemon.
 
 ## Repository layout
 
@@ -31,8 +35,10 @@ advantec-tedge-router-app/
 ├── Makefile                # top-level build (PLATFORMS="v4i" ...)
 ├── Rules.mk                # locates ../ModulesSDK, pulls in SDK make macros
 ├── packages/
-│   └── tedge/              # fetches + prepares the thin-edge.io standalone bundle
-│       └── Makefile        #   -> tedge-standalone-<ver>.<platform>.pkg
+│   ├── tedge/              # fetches + prepares the thin-edge.io standalone bundle
+│   │   └── Makefile        #   -> tedge-standalone-<ver>.<platform>.pkg
+│   └── tedge-container/    # fetches the tedge-container-plugin binary
+│       └── Makefile        #   -> tedge-container-<ver>.<platform>.pkg
 ├── modules/
 │   ├── Rules.mk            # platform compatibility matrix
 │   └── tedge/              # the Router App itself
@@ -73,6 +79,35 @@ The page is a single compiled CGI (`source/module_cgi.c`) built against the
 SDK's `libum`. The router's web server enforces login on it (via the standard
 `www/.htpasswd` link) and `libum` adds the CSRF check.
 
+## Container management
+
+The app bundles the [tedge-container-plugin](https://github.com/thin-edge/tedge-container-plugin)
+(the statically-linked "ng" build, pinned in `packages/tedge-container/`), so the
+router's containers can be managed from Cumulocity. It has two independent parts:
+
+- **Software management** — the `container`, `container-group` and
+  `container-image` software types appear in Cumulocity's **Software** tab. Use
+  them to install/remove a single container image, a docker-compose project
+  (`container-group`), or pull an image without running it. These work on demand
+  through `tedge-agent`; no extra daemon is required.
+- **Monitoring daemon** (`tedge-container run`) — reports the status and
+  telemetry (CPU/memory) of managed containers to Cumulocity as child services.
+  It is enabled by default (`MOD_CONTAINER_ENABLED=1` in `/opt/tedge/etc/container`)
+  but starts **only when the Advantech Docker Router App is detected** (its
+  `/opt/docker` module — this is what provides the container engine on ICR-OS);
+  on a router without it the daemon is skipped with a log line, so the app still
+  installs cleanly. It logs to `/var/log/tedge/tedge-container.log`.
+
+Both the gate file (`etc/container`) and the plugin's full configuration
+(`/opt/tedge/plugins/tedge-container-plugin.toml` — filters, metrics interval,
+shared network, …) are editable from Cumulocity (Device Management →
+Configuration, types `container` and `tedge-container-plugin`). Container state
+(compose files, registry credentials) is kept under the persistent store
+`/opt/tedge-data/tedge-container-plugin`, so it survives a module upgrade. A
+container engine is **not** shipped with this app: install the **Advantech Docker
+Router App** (available on the `v4` / SL305 / ICR-3200 platforms) — the monitor
+detects it at `/opt/docker` and only runs when it is present.
+
 ## Building
 
 Building requires an **Ubuntu 24.04+** host, the Advantech **Toolchains** and the
@@ -112,9 +147,11 @@ make PLATFORMS="v2i v3 v4 v4i"      # everything
 cd modules/tedge && make PLATFORM=v4i   # just this app, one platform
 ```
 
-> The build fetches the matching thin-edge.io standalone release from GitHub
-> (internet access required). The pinned version lives in
-> `packages/tedge/Makefile` (`TEDGE_VERSION`) and `packages/tedge/version.txt`.
+> The build fetches the matching thin-edge.io standalone release **and** the
+> tedge-container-plugin binary from GitHub (internet access required). The
+> pinned versions live in `packages/tedge/Makefile` (`TEDGE_VERSION`) /
+> `packages/tedge/version.txt` and `packages/tedge-container/Makefile`
+> (`CONTAINER_VERSION`) / `packages/tedge-container/version.txt`.
 
 ## Extending with add-on Router Apps
 
